@@ -44,7 +44,7 @@ export class RequestVariableCacheValueProcessor {
             const forceJsonExtension = 'asJson.';
             const forceXmlExtension = 'asXml.';
             const { body, headers } = http;
-            if (!body) {
+            if (body === undefined || body === null) {
                 const message = http instanceof HttpRequest ? ResolveWarningMessage.RequestBodyNotExist : ResolveWarningMessage.ResponseBodyNotExist;
                 return { state: ResolveState.Warning, message };
             }
@@ -87,7 +87,7 @@ export class RequestVariableCacheValueProcessor {
             }
 
             const value = getHeader(headers, nameOrPath);
-            if (!value) {
+            if (value === undefined) {
                 return { state: ResolveState.Warning, message: ResolveWarningMessage.IncorrectHeaderName };
             } else {
                 return { state: ResolveState.Success, value };
@@ -97,13 +97,14 @@ export class RequestVariableCacheValueProcessor {
 
     private static resolveJsonHttpBody(body: unknown, path: string): ResolveResult {
         try {
-            const result = JSONPath({ path, json: body });
-            const value = typeof result[0] === 'string' ? result[0] : JSON.stringify(result[0]);
-            if (!value) {
+            const jsonBody = body as string | number | boolean | object | unknown[] | null;
+            const result = JSONPath({ path, json: jsonBody }) as unknown[];
+            if (result.length === 0 || result[0] === undefined) {
                 return { state: ResolveState.Warning, message: ResolveWarningMessage.IncorrectJSONPath };
-            } else {
-                return { state: ResolveState.Success, value };
             }
+
+            const value = typeof result[0] === 'string' ? result[0] : JSON.stringify(result[0]);
+            return { state: ResolveState.Success, value };
         } catch {
             return { state: ResolveState.Warning, message: ResolveWarningMessage.InvalidJSONPath };
         }
@@ -112,25 +113,30 @@ export class RequestVariableCacheValueProcessor {
     private static resolveXmlHttpBody(body: unknown, path: string): ResolveResult {
         try {
             const doc = new DOMParser().parseFromString(String(body));
-            const results = xpath.select(path, doc);
+            const results = xpath.select(path, doc) as unknown;
             if (typeof results === 'string') {
                 return { state: ResolveState.Success, value: results };
+            }
+
+            if (!Array.isArray(results) || results.length === 0) {
+                return { state: ResolveState.Warning, message: ResolveWarningMessage.IncorrectXPath };
+            }
+
+            const result = results[0] as {
+                nodeType: number;
+                documentElement?: { toString: () => string };
+                childNodes?: { toString: () => string };
+                nodeValue?: string | null;
+            };
+            if (result.nodeType === NodeType.Document) {
+                // Document
+                return { state: ResolveState.Success, value: result.documentElement?.toString() ?? '' };
+            } else if (result.nodeType === NodeType.Element) {
+                // Element
+                return { state: ResolveState.Success, value: result.childNodes?.toString() ?? '' };
             } else {
-                if (results.length === 0) {
-                    return { state: ResolveState.Warning, message: ResolveWarningMessage.IncorrectXPath };
-                } else {
-                    const result = results[0];
-                    if (result.nodeType === NodeType.Document) {
-                        // Document
-                        return { state: ResolveState.Success, value: result.documentElement.toString() };
-                    } else if (result.nodeType === NodeType.Element) {
-                        // Element
-                        return { state: ResolveState.Success, value: result.childNodes.toString() };
-                    } else {
-                        // Attribute
-                        return { state: ResolveState.Success, value: result.nodeValue };
-                    }
-                }
+                // Attribute
+                return { state: ResolveState.Success, value: result.nodeValue ?? '' };
             }
         } catch {
             return { state: ResolveState.Warning, message: ResolveWarningMessage.InvalidXPath };

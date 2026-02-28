@@ -177,7 +177,7 @@ export class HttpResponseWebview extends BaseWebview {
     @trace('Save Response Body')
     private async saveBody() {
         if (this.activeResponse) {
-            const fileName = HttpResponseWebview.getResponseBodyOuptutFilename(this.activeResponse, this.settings);
+            const fileName = HttpResponseWebview.getResponseBodyOutputFilename(this.activeResponse, this.settings);
             const defaultFilePath = UserDataManager.getResponseBodySaveFilePath(fileName);
 
             try {
@@ -188,7 +188,7 @@ export class HttpResponseWebview extends BaseWebview {
         }
     }
 
-    private static getResponseBodyOuptutFilename(activeResponse: HttpResponse, settings: SystemSettings) {
+    private static getResponseBodyOutputFilename(activeResponse: HttpResponse, settings: SystemSettings) {
         if (settings.useContentDispositionFilename) {
             const cdHeader = getHeader(activeResponse.headers, 'content-disposition');
             if (cdHeader) {
@@ -260,8 +260,19 @@ export class HttpResponseWebview extends BaseWebview {
         ${csp}
         <script nonce="${nonce}">
             document.addEventListener('DOMContentLoaded', function () {
-                document.getElementById('scroll-to-top')
-                        .addEventListener('click', function () { window.scrollTo(0,0); });
+                const button = document.getElementById('scroll-to-top');
+                if (!button) {
+                    return;
+                }
+
+                const scrollToTop = function () { window.scrollTo(0, 0); };
+                button.addEventListener('click', scrollToTop);
+                button.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        scrollToTop();
+                    }
+                });
             });
         </script>
     </head>
@@ -270,7 +281,7 @@ export class HttpResponseWebview extends BaseWebview {
             ${this.settings.disableAddingHrefLinkForLargeResponse && response.bodySizeInBytes > this.settings.largeResponseBodySizeLimitInMB * 1024 * 1024
                 ? innerHtml
                 : this.addUrlLinks(innerHtml)}
-            <a id="scroll-to-top" role="button" aria-label="scroll to top" title="Scroll To Top"><span class="icon"></span></a>
+            <a id="scroll-to-top" role="button" tabindex="0" aria-label="scroll to top" title="Scroll To Top"><span class="icon"></span></a>
         </div>
         <script type="text/javascript" src="${panel.webview.asWebviewUri(this.scriptFilePath)}" nonce="${nonce}" charset="UTF-8"></script>
     </body>`;
@@ -317,11 +328,10 @@ export class HttpResponseWebview extends BaseWebview {
 ${formatHeaders(request.headers)}`;
             code += hljs.highlight(requestNonBodyPart + '\r\n', { language: 'http' }).value;
             if (request.body) {
-                if (typeof request.body !== 'string') {
-                    request.body = 'NOTE: Request Body From File Is Not Shown';
-                }
-                const requestBodyPart = `${ResponseFormatUtility.formatBody(request.body, request.contentType, true)}`;
-                const bodyLanguageAlias = HttpResponseWebview.getHighlightLanguageAlias(request.contentType, request.body);
+                const requestBody =
+                    typeof request.body === 'string' ? request.body : 'NOTE: Request Body From File Is Not Shown';
+                const requestBodyPart = `${ResponseFormatUtility.formatBody(requestBody, request.contentType, true)}`;
+                const bodyLanguageAlias = HttpResponseWebview.getHighlightLanguageAlias(request.contentType, requestBodyPart);
                 if (bodyLanguageAlias) {
                     code += hljs.highlight(requestBodyPart, { language: bodyLanguageAlias }).value;
                 } else {
@@ -388,17 +398,15 @@ ${formatHeaders(response.headers)}`;
         return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; script-src 'nonce-${nonce}'; style-src ${cspSource} 'unsafe-inline'; frame-src ${cspSource};">`;
     }
 
-    private addLineNums(code): string {
-        code = code.replace(/([\r\n]\s*)(<\/span>)/ig, '$2$1');
+    private addLineNums(code: string): string {
+        let normalizedCode = code.replace(/([\r\n]\s*)(<\/span>)/ig, '$2$1');
+        normalizedCode = this.cleanLineBreaks(normalizedCode);
 
-        code = this.cleanLineBreaks(code);
+        const codeLines = normalizedCode.split(/\r\n|\r|\n/);
+        const max = (1 + codeLines.length).toString().length;
+        const foldingRanges = this.getFoldingRange(codeLines);
 
-        code = code.split(/\r\n|\r|\n/);
-        const max = (1 + code.length).toString().length;
-
-        const foldingRanges = this.getFoldingRange(code);
-
-        code = code
+        return codeLines
             .map(function (line, i) {
                 const lineNum = i + 1;
                 const range = foldingRanges.has(lineNum)
@@ -408,7 +416,6 @@ ${formatHeaders(response.headers)}`;
                 return `<span class="line width-${max}" start="${lineNum}"${range}>${line}${folding}</span>`;
             })
             .join('\n');
-        return code;
     }
 
     private cleanLineBreaks(code: string): string {

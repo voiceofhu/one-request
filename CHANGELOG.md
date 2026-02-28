@@ -1,3 +1,7 @@
+## Unreleased
+* __Documentation__: Add Simplified Chinese README (`README.zh-CN.md`)
+* __Documentation__: Add language switch links between `README.md` and `README.zh-CN.md`
+
 ## 0.25.1 (2022/07/06)
 * __Bug Fix__: [Fix request parse error for curl request without body](https://github.com/huzhihui/one-request/issues/1026)
 

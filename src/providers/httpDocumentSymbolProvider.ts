@@ -1,19 +1,20 @@
+import * as path from 'path';
 import { CancellationToken, DocumentSymbolProvider, Location, Range, SymbolInformation, SymbolKind, TextDocument } from 'vscode';
 import * as Constants from '../common/constants';
 import { RequestParserFactory } from '../models/requestParserFactory';
 import { Selector } from '../utils/selector';
 import { VariableProcessor } from '../utils/variableProcessor';
-import { getCurrentHttpFileName } from '../utils/workspaceUtility';
 
 export class HttpDocumentSymbolProvider implements DocumentSymbolProvider {
     public async provideDocumentSymbols(document: TextDocument, token: CancellationToken): Promise<SymbolInformation[]> {
         const symbols: SymbolInformation[] = [];
         const lines: string[] = document.getText().split(Constants.LineSplitterRegex);
-        const requestRange: [number, number][] = Selector.getRequestRanges(
+        const requestRanges: [number, number][] = Selector.getRequestRanges(
             lines,
             { ignoreCommentLine: false , ignoreFileVariableDefinitionLine: false });
+        const fileName = path.basename(document.fileName, path.extname(document.fileName));
 
-        for (const [requestStart, blockEnd] of requestRange) {
+        for (const [requestStart, blockEnd] of requestRanges) {
             let blockStart = requestStart;
             // get real start for current requestRange
             let requestName: string | undefined;
@@ -26,7 +27,7 @@ export class HttpDocumentSymbolProvider implements DocumentSymbolProvider {
                     }
                     blockStart++;
                 } else if (Selector.isFileVariableDefinitionLine(line)) {
-                    const [name, container] = this.getFileVariableSymbolInfo(line);
+                    const [name, container] = this.getFileVariableSymbolInfo(line, fileName);
                     symbols.push(
                         new SymbolInformation(
                             name,
@@ -41,12 +42,16 @@ export class HttpDocumentSymbolProvider implements DocumentSymbolProvider {
                 }
             }
 
+            if (blockStart > blockEnd) {
+                continue;
+            }
+
             if (Selector.isResponseStatusLine(lines[blockStart])) {
                 continue;
             }
 
             if (blockStart <= blockEnd) {
-                const [name, container] = await this.getRequestSymbolInfo(lines[blockStart], requestName);
+                const [name, container] = await this.getRequestSymbolInfo(lines[blockStart], requestName, fileName);
                 symbols.push(
                     new SymbolInformation(
                         name,
@@ -60,16 +65,17 @@ export class HttpDocumentSymbolProvider implements DocumentSymbolProvider {
         return symbols;
     }
 
-    private getFileVariableSymbolInfo(line: string): [string, string] {
-        const fileName = getCurrentHttpFileName();
+    private getFileVariableSymbolInfo(line: string, fileName: string): [string, string] {
         line = line.trim();
-        return [line.substring(1, line.indexOf('=')).trim(), fileName!];
+        const match = Constants.FileVariableDefinitionRegex.exec(line);
+        const variableName = match?.[1] ?? line.substring(1, line.indexOf('=')).trim();
+        return [variableName, fileName];
     }
 
-    private async getRequestSymbolInfo(rawText: string, name: string | undefined): Promise<[string, string]> {
+    private async getRequestSymbolInfo(rawText: string, name: string | undefined, fileName: string): Promise<[string, string]> {
         // For request with name, return the request name and file name instead
         if (name) {
-            return [name, getCurrentHttpFileName()!];
+            return [name, fileName];
         }
 
         const text = await VariableProcessor.processRawRequest(rawText);

@@ -32,9 +32,9 @@ export class HttpResponseTextDocumentView {
             await window.showTextDocument(document, { viewColumn: column, preserveFocus: !this.settings.previewResponsePanelTakeFocus, preview: false });
         } else {
             document = this.documents[this.documents.length - 1];
-            languages.setTextDocumentLanguage(document, language);
+            document = await languages.setTextDocumentLanguage(document, language);
             const editor = await window.showTextDocument(document, { viewColumn: column, preserveFocus: !this.settings.previewResponsePanelTakeFocus, preview: false });
-            editor.edit(edit => {
+            await editor.edit(edit => {
                 const startPosition = new Position(0, 0);
                 const endPosition = document.lineAt(document.lineCount - 1).range.end;
                 edit.replace(new Range(startPosition, endPosition), content);
@@ -51,10 +51,9 @@ export class HttpResponseTextDocumentView {
             content += `${request.method} ${request.url} HTTP/1.1${EOL}`;
             content += formatHeaders(request.headers);
             if (request.body) {
-                if (typeof request.body !== 'string') {
-                    request.body = 'NOTE: Request Body From Is File Not Shown';
-                }
-                content += `${EOL}${ResponseFormatUtility.formatBody(request.body.toString(), request.contentType, true)}${EOL}`;
+                const requestBody =
+                    typeof request.body === 'string' ? request.body : 'NOTE: Request Body From File Is Not Shown';
+                content += `${EOL}${ResponseFormatUtility.formatBody(requestBody.toString(), request.contentType, true)}${EOL}`;
             }
 
             content += EOL.repeat(2);
