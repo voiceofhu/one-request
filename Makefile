@@ -4,11 +4,37 @@ VERSION := $(shell TZ="Asia/Shanghai" date +"%y.%m%d.%H%M")
 DEFAULT_MSG := "bump version to v$(VERSION)"
 
 
-# 检查 npm 是否安装
-NPM := $(shell command -v npm 2> /dev/null)
-ifeq ($(strip $(NPM)),)
-$(error npm is not installed. Please install Node.js and npm)
+# 检查 pnpm 是否安装
+PNPM := $(shell command -v pnpm 2> /dev/null)
+ifeq ($(strip $(PNPM)),)
+$(error pnpm is not installed. Please install pnpm first)
 endif
+
+.PHONY: install lint test build quality package dev update-version push-version push-tag
+
+# 安装依赖
+install:
+	@$(PNPM) install
+
+# 代码检查
+lint:
+	@$(PNPM) run lint
+
+# 运行测试
+test:
+	@$(PNPM) run test
+
+# 构建插件
+build:
+	@$(PNPM) run build
+
+# 质量与性能检查脚本
+quality:
+	@$(PNPM) run quality
+
+# 打包 VSCode 插件（生成 .vsix）
+package:
+	@$(PNPM) run package:vsix
 
 # 更新版本号，增加错误处理
 update-version:
@@ -42,4 +68,4 @@ push-tag: push-version
 
 # 开发环境
 dev:
-	@$(NPM) run dev
+	@$(PNPM) run watch

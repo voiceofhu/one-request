@@ -711,7 +711,9 @@
     "test:unit": "pnpm exec tsc -p tsconfig.test.json && node --loader ./scripts/test-esm-loader.mjs --test .test-dist/tests/**/*.test.js",
     "test": "pnpm run test:unit",
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
-    "lint:fix": "eslint \"src/**/*.ts\" --fix"
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "quality": "bash scripts/quality_and_perf.sh",
+    "package:vsix": "pnpm run build && pnpm exec vsce package --no-dependencies"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -732,6 +734,7 @@
     "@types/vscode": "^1.81.0",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^9",
     "eslint-plugin-simple-import-sort": "^12",
     "js-yaml": "^4.1.1",
