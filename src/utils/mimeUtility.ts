@@ -109,6 +109,10 @@ export class MimeUtility {
         return this.isEssence(contentTypeString, 'application/x-ndjson');
     }
 
+    public static isEventStream(contentTypeString: string | undefined): boolean {
+        return this.isEssence(contentTypeString, 'text/event-stream');
+    }
+
     private static getParsedMimeType(contentTypeString: string | undefined): MimeType | undefined {
         if (!contentTypeString) {
             return undefined;

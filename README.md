@@ -120,7 +120,7 @@ Press `F1`, type `ext install` then search for `one-request`.
 
 ## Making Request
 
-![one-request](https://raw.githubusercontent.com/huzhihui/one-request/master/images/usage.gif)
+![one-request](./images/usage.gif)
 
 ### Request Line
 
@@ -292,7 +292,7 @@ query ($name: String!, $owner: String!) {
 
 ## Making cURL Request
 
-![cURL Request](https://raw.githubusercontent.com/huzhihui/one-request/master/images/curl-request.png)
+![cURL Request](./images/curl-request.png)
 We add the capability to directly run [curl request](https://curl.haxx.se/) in One Request extension. The issuing request command is the same as raw HTTP one. One Request will automatically parse the request with specified parser.
 
 `One Request` doesn't fully support all the options of `cURL`, since underneath we use `request` library to send request which doesn't accept all the `cURL` options. Supported options are listed below:
@@ -319,14 +319,14 @@ Sometimes you may want to refresh the API response, now you could do it simply u
 
 ## Request History
 
-![request-history](https://raw.githubusercontent.com/huzhihui/one-request/master/images/request-history.png)
+![request-history](./images/request-history.png)
 Every time you send an http request, the request details, including method, url, headers, and body, are saved into a file for future reference. To access this content, you can use the shortcut `Ctrl+Alt+H`(`Cmd+Alt+H` for macOS), or press `F1` and then select/type `One Request: Request History`. This will allow you to view the last **50** request items in time reversing order, displaying the method, url, and request time for each one. After specified request history item is selected, the request details would be displayed in a temp file, you can view the request details or follow previous step to trigger the request again.
 
 You can also clear request history by pressing `F1` and then selecting/typing `One Request: Clear Request History`.
 
 ## Save Full Response
 
-![Save Response](https://raw.githubusercontent.com/huzhihui/one-request/master/images/response.gif)
+![Save Response](./images/response.gif)
 In the upper right corner of the response preview tab, we add a new icon to save the latest response to local file system. After you click the `Save Full Response` icon, it will prompt the window with the saved response file path. You can click the `Open` button to open the saved response file in current workspace or click `Copy Path` to copy the saved response path to clipboard.
 
 ## Save Response Body
@@ -459,7 +459,7 @@ Authorization: COGNITO <Username> <Password> <Region> <UserPoolId> <ClientId>
 
 ## Generate Code Snippet
 
-![Generate Code Snippet](https://raw.githubusercontent.com/huzhihui/one-request/master/images/code-snippet.gif)
+![Generate Code Snippet](./images/code-snippet.gif)
 Once you’ve finalized your request in One Request extension, you might want to make the same request from your source code. We allow you to generate snippets of code in various languages and libraries that will help you achieve this. Once you prepared a request as previously, use shortcut `Ctrl+Alt+C`(`Cmd+Alt+C` for macOS), or right-click in the editor and then select `Generate Code Snippet` in the menu, or press `F1` and then select/type `One Request: Generate Code Snippet`, it will pop up the language pick list, as well as library list. After you selected the code snippet language/library you want, the generated code snippet will be previewed in a separate panel of Visual Studio Code, you can click the `Copy Code Snippet` icon in the tab title to copy it to clipboard.
 
 ## HTTP Language
@@ -471,7 +471,7 @@ Add language support for HTTP request, with features like **syntax highlight**, 
 
 If you want to enable language association in other cases, just change the language mode in the right bottom of `Visual Studio Code` to `HTTP`.
 
-![HTTP Language](https://raw.githubusercontent.com/huzhihui/one-request/master/images/http.png)
+![HTTP Language](./images/http.png)
 
 ### Auto Completion
 
@@ -488,7 +488,7 @@ Currently, auto completion will be enabled for following seven categories:
 ### Navigate to Symbols in Request File
 
 A single `http` file may define lots of requests and file level custom variables, it will be difficult to find the request/variable you want. We leverage from the _Goto Symbol Feature_ of _Visual Studio Code_ to support to navigate(goto) to request/variable with shortcut `Ctrl+Shift+O`(`Cmd+Shift+O` for macOS), or simply press `F1`, type `@`.
-![Goto Symbols](https://raw.githubusercontent.com/huzhihui/one-request/master/images/navigate.png)
+![Goto Symbols](./images/navigate.png)
 
 ## Environments
 

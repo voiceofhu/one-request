@@ -57,10 +57,14 @@ export class HttpClient {
     settings = settings || SystemSettings.Instance;
 
     const options = await this.prepareOptions(httpRequest, settings);
+    const requestUrl = encodeUrl(httpRequest.url);
+
+    if (HttpClient.isEventStreamRequest(options.headers)) {
+      return this.sendEventStreamRequest(httpRequest, settings, requestUrl, options);
+    }
 
     let bodySize = 0;
     let headersSize = 0;
-    const requestUrl = encodeUrl(httpRequest.url);
     const request: CancelableRequest<Response<Buffer>> = got.default(
       requestUrl,
       options,
@@ -80,18 +84,7 @@ export class HttpClient {
 
     const response = await request;
 
-    const encoding = this.resolveResponseEncoding(
-      response.headers["content-type"],
-    );
-
     const bodyBuffer = response.body;
-    let bodyString = iconv.encodingExists(encoding)
-      ? iconv.decode(bodyBuffer, encoding)
-      : bodyBuffer.toString();
-
-    if (settings.decodeEscapedUnicodeCharacters) {
-      bodyString = this.decodeEscapedUnicodeCharacters(bodyString);
-    }
 
     // adjust response header case, due to the response headers in nodejs http module is in lowercase
     const responseHeaders: ResponseHeaders = HttpClient.normalizeHeaderNames(
@@ -100,28 +93,27 @@ export class HttpClient {
     );
 
     const requestBody = options.body;
+    const normalizedRequestHeaders = HttpClient.normalizeHeaderNames(
+      response.request.options.headers as RequestHeaders,
+      Object.keys(httpRequest.headers),
+    );
 
-    return new HttpResponse(
+    return this.toHttpResponse(
       response.statusCode,
-      response.statusMessage!,
+      response.statusMessage ?? "",
       response.httpVersion,
       responseHeaders,
-      bodyString,
+      bodyBuffer,
       bodySize,
       headersSize,
-      bodyBuffer,
       response.timings.phases,
-      new HttpRequest(
-        options.method!,
-        requestUrl,
-        HttpClient.normalizeHeaderNames(
-          response.request.options.headers as RequestHeaders,
-          Object.keys(httpRequest.headers),
-        ),
-        HttpClient.normalizeRequestBody(requestBody),
-        httpRequest.rawBody,
-        httpRequest.name,
-      ),
+      settings,
+      options.method ?? "GET",
+      requestUrl,
+      normalizedRequestHeaders,
+      requestBody,
+      httpRequest.rawBody,
+      httpRequest.name,
     );
   }
 
@@ -322,6 +314,183 @@ export class HttpClient {
     }
 
     return undefined;
+  }
+
+  private static isEventStreamRequest(headers: Headers | undefined): boolean {
+    if (!headers) {
+      return false;
+    }
+
+    const acceptHeader = getHeader(headers as RequestHeaders, "accept")
+      ?.toString()
+      .toLowerCase();
+    if (!acceptHeader) {
+      return false;
+    }
+
+    return acceptHeader
+      .split(",")
+      .map((value) => value.trim())
+      .some((value) => value.startsWith("text/event-stream"));
+  }
+
+  private async sendEventStreamRequest(
+    httpRequest: HttpRequest,
+    settings: IOneRequestSettings,
+    requestUrl: string,
+    options: OptionsOfBufferResponseBody,
+  ): Promise<HttpResponse> {
+    const streamOptions = { ...options };
+    delete (streamOptions as { responseType?: string }).responseType;
+
+    return new Promise<HttpResponse>((resolve, reject) => {
+      let bodySize = 0;
+      let headersSize = 0;
+      let statusCode = 0;
+      let statusMessage = "";
+      let httpVersion = "1.1";
+      let responseHeaders: ResponseHeaders = {};
+      let timingPhases: Response<Buffer>["timings"]["phases"] = {};
+      const chunks: Buffer[] = [];
+
+      const requestStream = got.default.stream(requestUrl, streamOptions);
+      httpRequest.setUnderlyingRequest({
+        cancel: () => requestStream.destroy(),
+      });
+
+      requestStream.on("response", (res) => {
+        statusCode = res.statusCode ?? 0;
+        statusMessage = res.statusMessage ?? "";
+        httpVersion = res.httpVersion ?? "1.1";
+        timingPhases = res.timings?.phases ?? {};
+
+        if (res.rawHeaders) {
+          headersSize += res.rawHeaders
+            .map((header) => header.length)
+            .reduce((a, b) => a + b, 0);
+          headersSize += res.rawHeaders.length / 2;
+        }
+
+        responseHeaders = HttpClient.normalizeHeaderNames(
+          res.headers as RequestHeaders,
+          res.rawHeaders,
+        );
+      });
+
+      requestStream.on("data", (chunk) => {
+        const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+        bodySize += buffer.length;
+        chunks.push(buffer);
+      });
+
+      requestStream.on("end", () => {
+        const bodyBuffer = Buffer.concat(chunks);
+        const requestHeaders = HttpClient.normalizeHeaderNames(
+          (streamOptions.headers ?? {}) as RequestHeaders,
+          Object.keys(httpRequest.headers),
+        );
+        resolve(
+          this.toHttpResponse(
+            statusCode,
+            statusMessage,
+            httpVersion,
+            responseHeaders,
+            bodyBuffer,
+            bodySize,
+            headersSize,
+            timingPhases,
+            settings,
+            streamOptions.method ?? "GET",
+            requestUrl,
+            requestHeaders,
+            streamOptions.body,
+            httpRequest.rawBody,
+            httpRequest.name,
+          ),
+        );
+      });
+
+      requestStream.on("error", (error) => {
+        const hasPartialResponse = statusCode > 0 || chunks.length > 0;
+        if (httpRequest.isCancelled && hasPartialResponse) {
+          const bodyBuffer = Buffer.concat(chunks);
+          const requestHeaders = HttpClient.normalizeHeaderNames(
+            (streamOptions.headers ?? {}) as RequestHeaders,
+            Object.keys(httpRequest.headers),
+          );
+          const partialResponse = this.toHttpResponse(
+            statusCode,
+            statusMessage,
+            httpVersion,
+            responseHeaders,
+            bodyBuffer,
+            bodySize,
+            headersSize,
+            timingPhases,
+            settings,
+            streamOptions.method ?? "GET",
+            requestUrl,
+            requestHeaders,
+            streamOptions.body,
+            httpRequest.rawBody,
+            httpRequest.name,
+          );
+          reject(Object.assign(error, { partialResponse }));
+          return;
+        }
+
+        reject(error);
+      });
+    });
+  }
+
+  private toHttpResponse(
+    statusCode: number,
+    statusMessage: string,
+    httpVersion: string,
+    responseHeaders: ResponseHeaders,
+    bodyBuffer: Buffer,
+    bodySize: number,
+    headersSize: number,
+    timingPhases: Response<Buffer>["timings"]["phases"],
+    settings: IOneRequestSettings,
+    requestMethod: string,
+    requestUrl: string,
+    requestHeaders: RequestHeaders,
+    requestBody: OptionsOfBufferResponseBody["body"],
+    rawRequestBody: string | undefined,
+    requestName: string | undefined,
+  ): HttpResponse {
+    const encoding = this.resolveResponseEncoding(
+      responseHeaders["content-type"]?.toString(),
+    );
+    let bodyString = iconv.encodingExists(encoding)
+      ? iconv.decode(bodyBuffer, encoding)
+      : bodyBuffer.toString();
+
+    if (settings.decodeEscapedUnicodeCharacters) {
+      bodyString = this.decodeEscapedUnicodeCharacters(bodyString);
+    }
+
+    return new HttpResponse(
+      statusCode,
+      statusMessage,
+      httpVersion,
+      responseHeaders,
+      bodyString,
+      bodySize,
+      headersSize,
+      bodyBuffer,
+      timingPhases,
+      new HttpRequest(
+        requestMethod,
+        requestUrl,
+        requestHeaders,
+        HttpClient.normalizeRequestBody(requestBody),
+        rawRequestBody,
+        requestName,
+      ),
+    );
   }
 
   private getRequestCertificate(

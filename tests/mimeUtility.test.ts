@@ -25,3 +25,12 @@ test("MimeUtility should detect browser supported image format", () => {
   assert.equal(MimeUtility.isBrowserSupportedImageFormat("image/png"), true);
   assert.equal(MimeUtility.isBrowserSupportedImageFormat("image/tiff"), false);
 });
+
+test("MimeUtility should detect event stream content-type", () => {
+  assert.equal(MimeUtility.isEventStream("text/event-stream"), true);
+  assert.equal(
+    MimeUtility.isEventStream("text/event-stream; charset=utf-8"),
+    true,
+  );
+  assert.equal(MimeUtility.isEventStream("text/plain"), false);
+});

@@ -3,9 +3,13 @@ import { Stream } from 'stream';
 import { getContentType } from '../utils/misc';
 import { RequestHeaders } from './base';
 
+type CancelableUnderlyingRequest = {
+    cancel?: () => void;
+};
+
 export class HttpRequest {
     public isCancelled: boolean;
-    private _underlyingRequest: CancelableRequest<Response<Buffer>>;
+    private _underlyingRequest: CancelableRequest<Response<Buffer>> | CancelableUnderlyingRequest;
     public constructor(
         public method: string,
         public url: string,
@@ -21,13 +25,16 @@ export class HttpRequest {
         return getContentType(this.headers);
     }
 
-    public setUnderlyingRequest(request: CancelableRequest<Response<Buffer>>): void {
+    public setUnderlyingRequest(request: CancelableRequest<Response<Buffer>> | CancelableUnderlyingRequest): void {
         this._underlyingRequest = request;
     }
 
     public cancel(): void {
         if (!this.isCancelled) {
-            this._underlyingRequest?.cancel();
+            const cancel = this._underlyingRequest?.cancel;
+            if (cancel) {
+                cancel.call(this._underlyingRequest);
+            }
             this.isCancelled = true;
         }
     }

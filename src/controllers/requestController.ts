@@ -21,6 +21,7 @@ export class RequestController {
     private _textDocumentView: HttpResponseTextDocumentView;
     private _lastRequestSettingTuple: [HttpRequest, IOneRequestSettings];
     private _lastPendingRequest?: HttpRequest;
+    private _lastCancelledRequest?: HttpRequest;
 
     public constructor(context: ExtensionContext) {
         this._requestStatusEntry = new RequestStatusEntry();
@@ -73,6 +74,7 @@ export class RequestController {
 
     @trace('Cancel Request')
     public async cancel() {
+        this._lastCancelledRequest = this._lastPendingRequest;
         this._lastPendingRequest?.cancel();
 
         this._requestStatusEntry.update({ state: RequestState.Cancelled });
@@ -117,6 +119,11 @@ export class RequestController {
         } catch (error) {
             // check cancel
             if (httpRequest.isCancelled) {
+                const partialResponse = (error as { partialResponse?: Awaited<ReturnType<HttpClient['send']>> }).partialResponse;
+                if (partialResponse && this._lastCancelledRequest === httpRequest) {
+                    this._requestStatusEntry.update({ state: RequestState.Received, response: partialResponse });
+                    await this.previewResponse(partialResponse, settings);
+                }
                 return;
             }
 
@@ -127,6 +134,9 @@ export class RequestController {
         } finally {
             if (this._lastPendingRequest === httpRequest) {
                 this._lastPendingRequest = undefined;
+            }
+            if (this._lastCancelledRequest === httpRequest) {
+                this._lastCancelledRequest = undefined;
             }
         }
     }
