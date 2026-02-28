@@ -1,5 +1,5 @@
-export type ResolveResult = { state: ResolveState.Success, value: any }
-                          | { state: ResolveState.Warning, value?: any, message: ResolveWarningMessage }
+export type ResolveResult = { state: ResolveState.Success, value: unknown }
+                          | { state: ResolveState.Warning, value?: unknown, message: ResolveWarningMessage }
                           | { state: ResolveState.Error, message: ResolveErrorMessage };
 
 export const enum ResolveState {

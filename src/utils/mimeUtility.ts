@@ -1,4 +1,4 @@
-const mime = require('mime-types');
+import * as mime from 'mime-types';
 
 class MimeType {
     public readonly type: string;

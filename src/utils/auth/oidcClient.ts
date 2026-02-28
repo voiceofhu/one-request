@@ -1,17 +1,21 @@
-import * as crypto from 'crypto';
-import fs from 'fs';
+import * as crypto from "crypto";
+import fs from "fs";
 import * as http from "http";
 import * as https from "https";
-import * as jws from 'jws';
-import fetch from 'node-fetch';
-import path from 'path';
-import sanitizeHtml from 'sanitize-html';
-import { SecureContextOptions } from 'tls';
-import { v4 as uuid } from 'uuid';
+import path from "path";
+import sanitizeHtml from "sanitize-html";
+import { SecureContextOptions } from "tls";
+import { v4 as uuid } from "uuid";
 import { env, Uri, window } from "vscode";
-import { IRestClientSettings, SystemSettings } from '../../models/configurationSettings';
-import { MemoryCache } from '../memoryCache';
-import { getCurrentHttpFileName, getWorkspaceRootPath } from '../workspaceUtility';
+import {
+  IRestClientSettings,
+  SystemSettings,
+} from "../../models/configurationSettings";
+import { MemoryCache } from "../memoryCache";
+import {
+  getCurrentHttpFilePath,
+  getWorkspaceRootPath,
+} from "../workspaceUtility";
 
 type ServerAuthorizationCodeResponse = {
   // Success case
@@ -39,7 +43,10 @@ export class CodeLoopbackClient {
   port: number = 0; // default port, which will be set to a random available port
   private server!: http.Server | https.Server;
 
-  private constructor(private callbackDomain: string, port: number = 0) {
+  private constructor(
+    private callbackDomain: string,
+    port: number = 0,
+  ) {
     this.port = port;
   }
 
@@ -49,7 +56,10 @@ export class CodeLoopbackClient {
    * @param logger
    * @returns
    */
-  static async initialize(callbackDomain: string, preferredPort: number | undefined): Promise<CodeLoopbackClient> {
+  static async initialize(
+    callbackDomain: string,
+    preferredPort: number | undefined,
+  ): Promise<CodeLoopbackClient> {
     const loopbackClient = new CodeLoopbackClient(callbackDomain);
 
     if (preferredPort === 0 || preferredPort === undefined) {
@@ -70,31 +80,53 @@ export class CodeLoopbackClient {
    * @param errorTemplate
    * @returns
    */
-  async listenForAuthCode(successTemplate?: string, errorTemplate?: string): Promise<ServerAuthorizationCodeResponse & { url: string }> {
+  async listenForAuthCode(
+    successTemplate?: string,
+    errorTemplate?: string,
+  ): Promise<ServerAuthorizationCodeResponse & { url: string }> {
     if (!!this.server) {
-      throw new Error('Loopback server already exists. Cannot create another.');
+      throw new Error("Loopback server already exists. Cannot create another.");
     }
 
-    const authCodeListener = new Promise<ServerAuthorizationCodeResponse & { url: string }>((resolve, reject) => {
-      const handler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const authCodeListener = new Promise<
+      ServerAuthorizationCodeResponse & { url: string }
+    >((resolve, reject) => {
+      const handler = async (
+        req: http.IncomingMessage,
+        res: http.ServerResponse,
+      ) => {
         const url = req.url;
         if (!url) {
           res.end(errorTemplate || "Error occurred loading redirectUrl");
-          reject(new Error('Loopback server callback was invoked without a url. This is unexpected.'));
+          reject(
+            new Error(
+              "Loopback server callback was invoked without a url. This is unexpected.",
+            ),
+          );
           return;
         } else if (url === "/") {
-          res.end(successTemplate || "Auth code was successfully acquired. You can close this window now.");
+          res.end(
+            successTemplate ||
+              "Auth code was successfully acquired. You can close this window now.",
+          );
           return;
         }
 
-        const authCodeResponse = CodeLoopbackClient.getDeserializedQueryString(url);
+        const authCodeResponse =
+          CodeLoopbackClient.getDeserializedQueryString(url);
         if (authCodeResponse.code) {
           const redirectUri = await this.getRedirectUri();
           res.writeHead(302, { location: redirectUri }); // Prevent auth code from being saved in the browser history
           res.end();
         } else {
-          res.end(`Authorization Server Error:${sanitizeHtml(JSON.stringify(authCodeResponse))}`);
-          reject(new Error(`Authorization Server Error:${JSON.stringify(authCodeResponse)}`));
+          res.end(
+            `Authorization Server Error:${sanitizeHtml(JSON.stringify(authCodeResponse))}`,
+          );
+          reject(
+            new Error(
+              `Authorization Server Error:${JSON.stringify(authCodeResponse)}`,
+            ),
+          );
         }
         resolve({ url, ...authCodeResponse });
       };
@@ -103,12 +135,15 @@ export class CodeLoopbackClient {
 
       try {
         const certificates = this.getSslCertificate(settings);
-        if (certificates && (certificates.cert && certificates.key || certificates.pfx)) {
+        if (
+          certificates &&
+          ((certificates.cert && certificates.key) || certificates.pfx)
+        ) {
           const options: SecureContextOptions = {
             cert: certificates?.cert,
             key: certificates?.key,
             pfx: certificates?.pfx,
-            passphrase: certificates?.passphrase
+            passphrase: certificates?.passphrase,
           };
           this.server = https.createServer(options, handler);
         } else {
@@ -116,7 +151,7 @@ export class CodeLoopbackClient {
         }
         this.server.listen(this.port);
       } catch (ex) {
-        reportError('Failed to start server', ex);
+        reportError("Failed to start server", ex);
       }
     });
 
@@ -124,8 +159,10 @@ export class CodeLoopbackClient {
     await new Promise<void>((resolve) => {
       let ticks = 0;
       const id = setInterval(() => {
-        if ((5000 / 100) < ticks) {
-          throw new Error('Timed out waiting for auth code listener to be registered.');
+        if (5000 / 100 < ticks) {
+          throw new Error(
+            "Timed out waiting for auth code listener to be registered.",
+          );
         }
 
         if (this.server.listening) {
@@ -139,10 +176,19 @@ export class CodeLoopbackClient {
     return authCodeListener;
   }
 
-  private getSslCertificate(settings: IRestClientSettings): SecureContextOptions | null {
-    const { cert: certPath, key: keyPath, pfx: pfxPath, passphrase } = settings.oidcCertificates[this.callbackDomain] ?? {};
+  private getSslCertificate(
+    settings: IRestClientSettings,
+  ): SecureContextOptions | null {
+    const {
+      cert: certPath,
+      key: keyPath,
+      pfx: pfxPath,
+      passphrase,
+    } = settings.oidcCertificates[this.callbackDomain] ?? {};
     if (!certPath && !keyPath && !pfxPath && this.callbackDomain) {
-      reportError(`No certificates found for ${this.callbackDomain} in settings.`);
+      reportError(
+        `No certificates found for ${this.callbackDomain} in settings.`,
+      );
       return null;
     }
     try {
@@ -151,19 +197,26 @@ export class CodeLoopbackClient {
       const pfx = this.resolveCertificate(pfxPath);
       return { cert, key, pfx, passphrase };
     } catch (ex) {
-      reportError(`Failed to load certificates from: {certPath:${certPath}} {keyPath:${keyPath}} {pfxPath:${pfxPath}}`, ex);
+      reportError(
+        `Failed to load certificates from: {certPath:${certPath}} {keyPath:${keyPath}} {pfxPath:${pfxPath}}`,
+        ex,
+      );
       return null;
     }
   }
 
-  private resolveCertificate(absoluteOrRelativePath: string | undefined): Buffer | undefined {
+  private resolveCertificate(
+    absoluteOrRelativePath: string | undefined,
+  ): Buffer | undefined {
     if (absoluteOrRelativePath === undefined) {
       return undefined;
     }
 
     if (path.isAbsolute(absoluteOrRelativePath)) {
       if (!fs.existsSync(absoluteOrRelativePath)) {
-        reportError(`Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`);
+        reportError(
+          `Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`,
+        );
         return undefined;
       } else {
         return fs.readFileSync(absoluteOrRelativePath);
@@ -172,27 +225,34 @@ export class CodeLoopbackClient {
 
     // the path should be relative path
     const rootPath = getWorkspaceRootPath();
-    let absolutePath = '';
+    let absolutePath = "";
     if (rootPath) {
-      absolutePath = path.join(Uri.parse(rootPath).fsPath, absoluteOrRelativePath);
+      absolutePath = path.join(rootPath, absoluteOrRelativePath);
       if (fs.existsSync(absolutePath)) {
         return fs.readFileSync(absolutePath);
       } else {
-        window.showWarningMessage(`Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`);
+        window.showWarningMessage(
+          `Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`,
+        );
         return undefined;
       }
     }
 
-    const currentFilePath = getCurrentHttpFileName();
+    const currentFilePath = getCurrentHttpFilePath();
     if (!currentFilePath) {
       return undefined;
     }
 
-    absolutePath = path.join(path.dirname(currentFilePath), absoluteOrRelativePath);
+    absolutePath = path.join(
+      path.dirname(currentFilePath),
+      absoluteOrRelativePath,
+    );
     if (fs.existsSync(absolutePath)) {
       return fs.readFileSync(absolutePath);
     } else {
-      window.showWarningMessage(`Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`);
+      window.showWarningMessage(
+        `Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`,
+      );
       return undefined;
     }
   }
@@ -203,18 +263,20 @@ export class CodeLoopbackClient {
    */
   getRedirectUri(): string {
     if (!this.server) {
-      throw new Error('No loopback server exists yet.');
+      throw new Error("No loopback server exists yet.");
     }
 
     const address = this.server.address();
     if (!address || typeof address === "string" || !address.port) {
       this.closeServer();
-      throw new Error('Loopback server address is not type string. This is unexpected.');
+      throw new Error(
+        "Loopback server address is not type string. This is unexpected.",
+      );
     }
 
     const port = address && address.port;
 
-    return `${this.callbackDomain ? 'https' : 'http'}://${this.callbackDomain ?? 'localhost'}:${port}`;
+    return `${this.callbackDomain ? "https" : "http"}://${this.callbackDomain ?? "localhost"}:${port}`;
   }
 
   /**
@@ -232,8 +294,9 @@ export class CodeLoopbackClient {
    * @returns
    */
   isPortAvailable(port: number): Promise<boolean> {
-    return new Promise(resolve => {
-      const server = http.createServer()
+    return new Promise((resolve) => {
+      const server = http
+        .createServer()
         .listen(port, () => {
           server.close();
           resolve(true);
@@ -248,7 +311,7 @@ export class CodeLoopbackClient {
    * Returns URL query string as server auth code response object.
    */
   static getDeserializedQueryString(
-    query: string
+    query: string,
   ): ServerAuthorizationCodeResponse {
     // Check if given query is empty
     if (!query) {
@@ -258,9 +321,7 @@ export class CodeLoopbackClient {
     const parsedQueryString = this.parseQueryString(query);
     // If ? symbol was not present, above will return empty string, so give original query value
     const deserializedQueryString: ServerAuthorizationCodeResponse =
-      this.queryStringToObject(
-        parsedQueryString || query
-      );
+      this.queryStringToObject(parsedQueryString || query);
     // Check if deserialization didn't work
     if (!deserializedQueryString) {
       throw "Unable to deserialize query string";
@@ -305,11 +366,14 @@ export class CodeLoopbackClient {
 
 export const CALLBACK_PORT = 7777;
 
-export const remoteOutput = window.createOutputChannel('REST-OIDC');
+export const remoteOutput = window.createOutputChannel("One Request-OIDC");
 
-const reportError = (msg: string, ex: Error | null = null ) => {
-  window.showWarningMessage(`Message: ${msg} Exception: ${ex?.message}`);
-  remoteOutput.appendLine(`Error: ${msg} Exception: ${ex?.message} Stack:${ex?.stack}`);
+const reportError = (msg: string, ex?: unknown) => {
+  const error = ex instanceof Error ? ex : undefined;
+  window.showWarningMessage(`Message: ${msg} Exception: ${error?.message}`);
+  remoteOutput.appendLine(
+    `Error: ${msg} Exception: ${error?.message} Stack:${error?.stack}`,
+  );
 };
 
 interface TokenInformation {
@@ -317,31 +381,55 @@ interface TokenInformation {
   refresh_token: string;
 }
 
+type JwtPayload = {
+  exp?: number;
+  [key: string]: unknown;
+};
+
+type TokenEndpointResponse = Partial<TokenInformation> & {
+  [key: string]: unknown;
+};
+
 export class OidcClient {
   private _tokenInformation: TokenInformation | undefined;
   private _pendingStates: string[] = [];
   private _codeVerfifiers = new Map<string, string>();
   private _scopes = new Map<string, string[]>();
 
-  constructor(private clientId: string,
+  constructor(
+    private clientId: string,
     private callbackDomain: string,
     private callbackPort: number,
     private authorizeEndpoint: string,
     private tokenEndpoint: string,
     private scopes: string,
     private audience: string,
-  ) {
-  }
+  ) {}
 
-  public static async getAccessToken(forceNew: boolean, clientId: string, callbackDomain: string, callbackPort: number,
+  public static async getAccessToken(
+    forceNew: boolean,
+    clientId: string,
+    callbackDomain: string,
+    callbackPort: number,
     authorizeEndpoint: string,
     tokenEndpoint: string,
     scopes: string,
-    audience: string): Promise<string | undefined> {
+    audience: string,
+  ): Promise<string | undefined> {
     const key = `${clientId}--${callbackDomain}-${callbackPort}-${authorizeEndpoint}-${tokenEndpoint}-${scopes}-${audience}`;
-    const cache = MemoryCache.createOrGet<OidcClient>('oidc');
+    const cache = MemoryCache.createOrGet<OidcClient>("oidc");
 
-    const client = cache.get(key) ?? new OidcClient(clientId, callbackDomain, callbackPort, authorizeEndpoint, tokenEndpoint, scopes, audience);
+    const client =
+      cache.get(key) ??
+      new OidcClient(
+        clientId,
+        callbackDomain,
+        callbackPort,
+        authorizeEndpoint,
+        tokenEndpoint,
+        scopes,
+        audience,
+      );
     cache.set(key, client);
     if (forceNew) {
       client.cleanupTokenCache();
@@ -355,25 +443,30 @@ export class OidcClient {
   }
 
   get redirectUri() {
-    return `${this.callbackDomain ? 'https' : 'http'}://${this.callbackDomain ?? 'localhost'}:${this.callbackPort}`;
+    return `${this.callbackDomain ? "https" : "http"}://${this.callbackDomain ?? "localhost"}:${this.callbackPort}`;
   }
 
   public async getAccessToken(): Promise<string | undefined> {
-    const tryDecode = (token: string): any => {
+    const tryDecode = (token: string): JwtPayload | null => {
       try {
-        const { payload } = jws.decode(token) ?? {};
-        return JSON.parse(payload);
+        return decodeJwtPayload(token);
       } catch (ex) {
-        reportError('Faild to decode access token', ex);
+        reportError("Faild to decode access token", ex);
         return null;
       }
     };
     if (this._tokenInformation?.access_token) {
       const payloadJson = tryDecode(this._tokenInformation.access_token);
-      if (payloadJson === null || payloadJson.exp && payloadJson.exp > Date.now() / 1000) {
+      if (
+        payloadJson === null ||
+        (payloadJson.exp && payloadJson.exp > Date.now() / 1000)
+      ) {
         return this._tokenInformation.access_token;
       } else {
-        return this.getAccessTokenByRefreshToken(this._tokenInformation.refresh_token, this.clientId).then((resp) => {
+        return this.getAccessTokenByRefreshToken(
+          this._tokenInformation.refresh_token,
+          this.clientId,
+        ).then((resp) => {
           this._tokenInformation = resp;
           return resp.access_token;
         });
@@ -383,7 +476,7 @@ export class OidcClient {
     const nonceId = uuid();
 
     // Retrieve all required scopes
-    const scopes = this.getScopes((this.scopes ?? "").split(','));
+    const scopes = this.getScopes((this.scopes ?? "").split(","));
 
     const codeVerifier = toBase64UrlEncoding(crypto.randomBytes(32));
     const codeChallenge = toBase64UrlEncoding(sha256(codeVerifier));
@@ -393,15 +486,15 @@ export class OidcClient {
     remoteOutput.appendLine(`Callback URI: ${callbackUri.toString(true)}`);
 
     const callbackQuery = new URLSearchParams(callbackUri.query);
-    const stateId = callbackQuery.get('state') || nonceId;
+    const stateId = callbackQuery.get("state") || nonceId;
 
     remoteOutput.appendLine(`State ID: ${stateId}`);
     remoteOutput.appendLine(`Nonce ID: ${nonceId}`);
 
-    callbackQuery.set('state', encodeURIComponent(stateId));
-    callbackQuery.set('nonce', encodeURIComponent(nonceId));
+    callbackQuery.set("state", encodeURIComponent(stateId));
+    callbackQuery.set("nonce", encodeURIComponent(nonceId));
     callbackUri = callbackUri.with({
-      query: callbackQuery.toString()
+      query: callbackQuery.toString(),
     });
 
     this._pendingStates.push(stateId);
@@ -409,100 +502,119 @@ export class OidcClient {
     this._scopes.set(stateId, scopes);
 
     const params = [
-      ['response_type', "code"],
-      ['client_id', this.clientId],
-      ['redirect_uri', this.redirectUri],
-      ['state', stateId],
-      ['scope', scopes.join(' ')],
-      ['prompt', "login"],
-      ['code_challenge_method', 'S256'],
-      ['code_challenge', codeChallenge],
+      ["response_type", "code"],
+      ["client_id", this.clientId],
+      ["redirect_uri", this.redirectUri],
+      ["state", stateId],
+      ["scope", scopes.join(" ")],
+      ["prompt", "login"],
+      ["code_challenge_method", "S256"],
+      ["code_challenge", codeChallenge],
     ];
 
     if (this.audience) {
-      params.push(['resource', this.audience]);
+      params.push(["resource", this.audience]);
     }
 
     const searchParams = new URLSearchParams(params as [string, string][]);
 
-    const uri = Uri.parse(`${this.authorizeEndpoint}?${searchParams.toString()}`);
+    const uri = Uri.parse(
+      `${this.authorizeEndpoint}?${searchParams.toString()}`,
+    );
 
     remoteOutput.appendLine(`Login URI: ${uri.toString(true)}`);
 
-    const loopbackClient = await CodeLoopbackClient.initialize(this.callbackDomain, this.callbackPort);
+    const loopbackClient = await CodeLoopbackClient.initialize(
+      this.callbackDomain,
+      this.callbackPort,
+    );
 
     try {
       await env.openExternal(uri);
       const callBackResp = await loopbackClient.listenForAuthCode();
-      const codeExchangePromise = this._handleCallback(Uri.parse(callBackResp.url));
+      const codeExchangePromise = this._handleCallback(
+        Uri.parse(callBackResp.url),
+      );
 
       const resp = await Promise.race([
         codeExchangePromise,
-        new Promise<null>((_, reject) => setTimeout(() => reject('Cancelled'), 60000))
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject("Cancelled"), 60000),
+        ),
       ]);
       this._tokenInformation = resp as TokenInformation;
       return resp?.access_token;
     } finally {
       loopbackClient.closeServer();
-      this._pendingStates = this._pendingStates.filter(n => n !== stateId);
+      this._pendingStates = this._pendingStates.filter((n) => n !== stateId);
       this._codeVerfifiers.delete(stateId);
       this._scopes.delete(stateId);
     }
   }
 
-  private async getAccessTokenByRefreshToken(refreshToken: string, clientId: string): Promise<TokenInformation> {
+  private async getAccessTokenByRefreshToken(
+    refreshToken: string,
+    clientId: string,
+  ): Promise<TokenInformation> {
     const postData = new URLSearchParams({
-      grant_type: 'refresh_token',
+      grant_type: "refresh_token",
       client_id: clientId,
-      refresh_token: refreshToken
+      refresh_token: refreshToken,
     }).toString();
 
     const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        'Content-Length': postData.length.toString()
+        "Content-Length": postData.length.toString(),
       },
-      body: postData
+      body: postData,
     });
 
     if (response.status !== 200) {
       const error = await response.json();
-      throw new Error(`Failed to retrieve access token: ${response.status} ${JSON.stringify(error)}`);
+      throw new Error(
+        `Failed to retrieve access token: ${response.status} ${JSON.stringify(error)}`,
+      );
     }
 
-    const { access_token, refresh_token } = await response.json();
-
+    const json = (await response.json()) as TokenEndpointResponse;
+    const { access_token, refresh_token } = json;
+    if (!access_token || !refresh_token) {
+      throw new Error(
+        `Failed to retrieve access token: ${response.status} ${JSON.stringify(json)}`,
+      );
+    }
 
     return { access_token, refresh_token };
   }
 
-  private async _handleCallback(uri: Uri): Promise<TokenInformation | undefined> {
+  private async _handleCallback(
+    uri: Uri,
+  ): Promise<TokenInformation | undefined> {
     const query = new URLSearchParams(uri.query);
-    const code = query.get('code');
-    const stateId = query.get('state');
+    const code = query.get("code");
+    const stateId = query.get("state");
 
     if (!code) {
-      throw new Error('No code');
-
+      throw new Error("No code");
     }
     if (!stateId) {
-      throw new Error('No state');
-
+      throw new Error("No state");
     }
 
     const codeVerifier = this._codeVerfifiers.get(stateId);
     if (!codeVerifier) {
-      throw new Error('No code verifier');
+      throw new Error("No code verifier");
     }
 
     // Check if it is a valid auth request started by the extension
-    if (!this._pendingStates.some(n => n === stateId)) {
-      throw new Error('State not found');
+    if (!this._pendingStates.some((n) => n === stateId)) {
+      throw new Error("State not found");
     }
 
     const postData = new URLSearchParams({
-      grant_type: 'authorization_code',
+      grant_type: "authorization_code",
       client_id: this.clientId,
       code,
       code_verifier: codeVerifier,
@@ -510,22 +622,25 @@ export class OidcClient {
     }).toString();
     try {
       const response = await fetch(`${this.tokenEndpoint}`, {
-        method: 'POST',
+        method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          'Content-Length': postData.length.toString()
+          "Content-Length": postData.length.toString(),
         },
-        body: postData
+        body: postData,
       });
-      const json = await response.json();
+      const json = (await response.json()) as TokenEndpointResponse;
       const { access_token, refresh_token } = json;
-      if (!access_token) {
-        reportError(`Failed to retrieve access token: ${response.status} ${JSON.stringify(json)}`);
+      if (!access_token || !refresh_token) {
+        reportError(
+          `Failed to retrieve access token: ${response.status} ${JSON.stringify(json)}`,
+        );
+        return undefined;
       }
 
       return { access_token, refresh_token };
     } catch (ex) {
-      reportError('Failed to retrieve access token', ex);
+      reportError("Failed to retrieve access token", ex);
       return undefined;
     }
   }
@@ -542,13 +657,28 @@ export class OidcClient {
   }
 }
 
-export function toBase64UrlEncoding(buffer: Buffer) {
-  return buffer.toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+function toBase64UrlEncoding(buffer: Buffer) {
+  return buffer
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
-export function sha256(buffer: string | Uint8Array): Buffer {
-  return crypto.createHash('sha256').update(buffer).digest();
+function sha256(buffer: string | Uint8Array): Buffer {
+  return crypto.createHash("sha256").update(buffer).digest();
+}
+
+function decodeJwtPayload(token: string): JwtPayload {
+  const [, payloadSegment] = token.split(".");
+  if (!payloadSegment) {
+    throw new Error("Invalid JWT token");
+  }
+  const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(
+    normalized.length + ((4 - (normalized.length % 4)) % 4),
+    "=",
+  );
+  const payload = Buffer.from(padded, "base64").toString("utf8");
+  return JSON.parse(payload) as JwtPayload;
 }

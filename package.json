@@ -1,12 +1,12 @@
 {
-  "name": "rest-client",
-  "displayName": "REST Client",
-  "description": "REST Client for Visual Studio Code",
+  "name": "one-request",
+  "displayName": "One Request",
+  "description": "One Request for Visual Studio Code",
   "version": "0.26.0",
-  "publisher": "humao",
+  "publisher": "huzhihui",
   "author": {
-    "name": "Huachao Mao",
-    "email": "huachaomao@gmail.com"
+    "name": "huzhihui",
+    "email": "onerequest@huzhihui.com"
   },
   "icon": "images/rest_icon.png",
   "galleryBanner": {
@@ -15,13 +15,13 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Huachao/vscode-restclient/issues",
-    "email": "huachaomao@gmail.com"
+    "url": "https://github.com/voiceofhu/one-request/issues",
+    "email": "onerequest@huzhihui.com"
   },
-  "homepage": "https://github.com/Huachao/vscode-restclient/blob/master/README.md",
+  "homepage": "https://github.com/voiceofhu/one-request/blob/master/README.md",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Huachao/vscode-restclient.git"
+    "url": "https://github.com/voiceofhu/one-request.git"
   },
   "engines": {
     "vscode": "^1.81.0"
@@ -355,6 +355,12 @@
           "default": true,
           "scope": "resource",
           "description": "Follow HTTP 3xx responses as redirects."
+        },
+        "rest-client.strictSSL": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Verify peer certificates when using HTTPS."
         },
         "rest-client.defaultHeaders": {
           "type": "object",
@@ -700,58 +706,53 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "webpack --mode production",
-    "webpack": "webpack --mode development",
-    "watch": "webpack --mode development --watch",
+    "vscode:prepublish": "vite build",
+    "build": "vite build",
+    "watch": "vite build --watch",
     "tslint": "tslint --project tsconfig.json"
   },
   "devDependencies": {
+    "@szmarczak/http-timer": "^5.0.1",
     "@types/aws4": "^1.5.1",
     "@types/fs-extra": "^5.0.4",
-    "@types/jws": "^3.2.10",
-    "@types/mocha": "^5.2.6",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^18.0.0",
-    "@types/node-fetch": "^2.6.11",
     "@types/vscode": "^1.81.0",
-    "mocha": "^10.4.0",
-    "ts-loader": "^7.0.5",
+    "js-yaml": "^4.1.1",
     "tslint": "^6.1.2",
     "typescript": "^5.4.2",
-    "webpack": "^5.75.0",
-    "webpack-cli": "^5.0.1"
+    "vite": "^5.4.21"
   },
   "dependencies": {
     "adal-node": "^0.2.4",
-    "applicationinsights": "^1.0.5",
-    "aws-amplify": "^5.0.3",
+    "ajv": "^8.18.0",
+    "applicationinsights": "^3.14.0",
+    "aws-amplify": "^6.16.2",
     "aws4": "^1.9.1",
     "code-highlight-linenums": "^0.2.1",
     "combined-stream": "^1.0.5",
-    "content-disposition": "^0.5.3",
+    "content-disposition": "^1.0.1",
     "dayjs": "^1.8.20",
-    "dotenv": "^8.2.0",
-    "encodeurl": "^1.0.1",
-    "filesize": "^3.3.0",
-    "fs-extra": "^5.0.0",
-    "got": "^11.8.6",
-    "highlight.js": "^10.4.1",
-    "http-proxy-agent": "^2.1.0",
-    "https-proxy-agent": "^2.2.3",
-    "httpsnippet": "^1.22.0",
-    "iconv-lite": "^0.4.15",
-    "jsonc-parser": "^2.0.2",
-    "jsonpath-plus": "^0.20.1",
-    "mime-types": "^2.1.14",
-    "node-fetch": "^2.6.7",
-    "node-jws": "^0.1.4",
-    "open": "^10.1.0",
+    "dotenv": "^17.3.1",
+    "encodeurl": "^2.0.0",
+    "filesize": "^11.0.13",
+    "fs-extra": "^11.3.3",
+    "got": "^14.6.6",
+    "highlight.js": "^11.11.1",
+    "http-proxy-agent": "^7.0.2",
+    "https-proxy-agent": "^7.0.6",
+    "httpsnippet": "^3.0.1",
+    "iconv-lite": "^0.7.2",
+    "jsonc-parser": "^3.3.1",
+    "jsonpath-plus": "^10.4.0",
+    "mime-types": "^3.0.2",
     "pretty-data": "^0.40.0",
     "sanitize-html": "^2.13.0",
-    "tough-cookie": "^4.1.3",
-    "tough-cookie-file-store": "^2.0.3",
-    "uuid": "^3.3.2",
-    "xmldom": "^0.5.0",
-    "xpath": "^0.0.27",
-    "yargs-parser": "^21.1.1"
+    "tough-cookie": "^6.0.0",
+    "tough-cookie-file-store": "^3.3.0",
+    "uuid": "^13.0.0",
+    "xmldom": "^0.6.0",
+    "xpath": "^0.0.34",
+    "yargs-parser": "^22.0.0"
   }
 }

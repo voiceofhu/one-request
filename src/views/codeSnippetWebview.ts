@@ -1,10 +1,9 @@
+import codeHighlightLinenums from 'code-highlight-linenums';
+import hljs from 'highlight.js';
 import { Clipboard, commands, env, ExtensionContext, ViewColumn, WebviewPanel, window } from 'vscode';
 import { trace } from '../utils/decorator';
 import { disposeAll } from '../utils/dispose';
 import { BaseWebview } from './baseWebview';
-
-const hljs = require('highlight.js');
-const codeHighlightLinenums = require('code-highlight-linenums');
 
 export class CodeSnippetWebview extends BaseWebview {
 
@@ -76,7 +75,8 @@ export class CodeSnippetWebview extends BaseWebview {
     }
 
     private getHtmlForWebview(panel: WebviewPanel, convertResult: string, lang: string): string {
-        const csp = this.getCsp();
+        const nonce = this.getNonce();
+        const csp = this.getCsp(panel, nonce);
         return `
             <head>
                 <link rel="stylesheet" type="text/css" href="${panel.webview.asWebviewUri(this.baseFilePath)}">
@@ -87,8 +87,16 @@ export class CodeSnippetWebview extends BaseWebview {
             <body>
                 <div>
                     <pre><code>${codeHighlightLinenums(convertResult, { hljs, lang: this.getHighlightJsLanguageAlias(lang), start: 1 })}</code></pre>
-                    <a id="scroll-to-top" role="button" aria-label="scroll to top" onclick="window.scroll(0,0)"><span class="icon"></span></a>
+                    <a id="scroll-to-top" role="button" aria-label="scroll to top"><span class="icon"></span></a>
                 </div>
+                <script nonce="${nonce}">
+                    document.addEventListener('DOMContentLoaded', function () {
+                        const button = document.getElementById('scroll-to-top');
+                        if (button) {
+                            button.addEventListener('click', function () { window.scrollTo(0, 0); });
+                        }
+                    });
+                </script>
             </body>`;
     }
 
@@ -104,7 +112,12 @@ export class CodeSnippetWebview extends BaseWebview {
         return lang;
     }
 
-    private getCsp(): string {
-        return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' http: https: data: vscode-resource:; style-src 'self' 'unsafe-inline' http: https: data: vscode-resource:;">`;
+    private getCsp(panel: WebviewPanel, nonce: string): string {
+        const cspSource = panel.webview.cspSource;
+        return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; script-src 'nonce-${nonce}'; style-src ${cspSource} 'unsafe-inline';">`;
+    }
+
+    private getNonce(): string {
+        return `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     }
 }

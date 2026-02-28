@@ -18,6 +18,7 @@ export type HostCertificates = {
 
 export interface IRestClientSettings {
     readonly followRedirect: boolean;
+    readonly strictSSL: boolean;
     readonly defaultHeaders: RequestHeaders;
     readonly timeoutInMilliseconds: number;
     readonly showResponseInDifferentTab: boolean;
@@ -54,6 +55,7 @@ export interface IRestClientSettings {
 
 export class SystemSettings implements IRestClientSettings {
     private _followRedirect: boolean;
+    private _strictSSL: boolean;
     private _defaultHeaders: RequestHeaders;
     private _timeoutInMilliseconds: number;
     private _showResponseInDifferentTab: boolean;
@@ -89,6 +91,10 @@ export class SystemSettings implements IRestClientSettings {
 
     public get followRedirect() {
         return this._followRedirect;
+    }
+
+    public get strictSSL() {
+        return this._strictSSL;
     }
 
     public get defaultHeaders() {
@@ -257,6 +263,7 @@ export class SystemSettings implements IRestClientSettings {
         const document = getCurrentTextDocument();
         const restClientSettings = workspace.getConfiguration("rest-client", document?.uri);
         this._followRedirect = restClientSettings.get<boolean>("followredirect", true);
+        this._strictSSL = restClientSettings.get<boolean>("strictSSL", true);
         this._defaultHeaders = restClientSettings.get<RequestHeaders>("defaultHeaders",
                                                                      {
                                                                          "User-Agent": "vscode-restclient"
@@ -277,7 +284,7 @@ export class SystemSettings implements IRestClientSettings {
         this._mimeAndFileExtensionMapping = restClientSettings.get<{ [key: string]: string }>("mimeAndFileExtensionMapping", {});
 
         this._previewResponseInUntitledDocument = restClientSettings.get<boolean>("previewResponseInUntitledDocument", false);
-        this._previewColumn = this.parseColumn(restClientSettings.get<string>("previewColumn", "two"));
+        this._previewColumn = this.parseColumn(restClientSettings.get<string>("previewColumn", "beside"));
         this._previewResponsePanelTakeFocus = restClientSettings.get<boolean>("previewResponsePanelTakeFocus", true);
         this._hostCertificates = restClientSettings.get<HostCertificates>("certificates", {});
         this._oidcCertificates = Object.assign({}, restClientSettings.get<HostCertificates>("oidcCertificates", {}));
@@ -341,6 +348,10 @@ export class RestClientSettings implements IRestClientSettings {
 
     public get followRedirect() {
         return this.requestSettings.followRedirect ?? this.systemSettings.followRedirect;
+    }
+
+    public get strictSSL() {
+        return this.systemSettings.strictSSL;
     }
 
     public get defaultHeaders() {

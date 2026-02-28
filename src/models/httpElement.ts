@@ -17,7 +17,7 @@ export class HttpElement {
         }
 
         if (type === ElementType.SystemVariable) {
-            this.name = name.substr(1);
+            this.name = name.slice(1);
         }
     }
 }

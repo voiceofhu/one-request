@@ -1,6 +1,5 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import { Uri } from 'vscode';
 import { RequestHeaders } from "../models/base";
 import { removeHeader } from './misc';
 import { getCurrentTextDocument, getWorkspaceRootPath } from './workspaceUtility';
@@ -8,6 +7,7 @@ import { getCurrentTextDocument, getWorkspaceRootPath } from './workspaceUtility
 export function parseRequestHeaders(headerLines: string[], defaultHeaders: RequestHeaders, url: string): RequestHeaders {
     // message-header = field-name ":" [ field-value ]
     const headers: RequestHeaders = {};
+    const mergedDefaultHeaders = { ...defaultHeaders };
     const headerNames: { [key: string]: string } = {};
     headerLines.forEach(headerLine => {
         let fieldName: string;
@@ -32,10 +32,10 @@ export function parseRequestHeaders(headerLines: string[], defaultHeaders: Reque
     });
 
     if (url[0] !== '/') {
-        removeHeader(defaultHeaders, 'host');
+        removeHeader(mergedDefaultHeaders, 'host');
     }
 
-    return { ...defaultHeaders, ...headers };
+    return { ...mergedDefaultHeaders, ...headers };
 }
 
 export async function resolveRequestBodyPath(refPath: string): Promise<string | undefined> {
@@ -45,7 +45,7 @@ export async function resolveRequestBodyPath(refPath: string): Promise<string | 
 
     const workspaceRoot = getWorkspaceRootPath();
     if (workspaceRoot) {
-        const absolutePath = path.join(Uri.parse(workspaceRoot).fsPath, refPath);
+        const absolutePath = path.join(workspaceRoot, refPath);
         if (await fs.pathExists(absolutePath)) {
             return absolutePath;
         }

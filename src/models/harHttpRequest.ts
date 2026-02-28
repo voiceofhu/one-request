@@ -1,6 +1,3 @@
-import { ParsedUrlQuery } from 'querystring';
-import { parse as urlParse } from 'url';
-
 export interface HARNameValue {
     name: string;
     value: string;
@@ -42,20 +39,27 @@ export class HARHttpRequest {
     public queryString: HARParam[];
 
     public constructor(public method: string, public url: string, public headers: HARHeader[], public cookies: HARCookie[], public postData?: HARPostData) {
-        const queryObj = urlParse(url, true).query;
-        this.queryString = this.flatten(queryObj);
+        this.queryString = this.parseQueryString(url);
     }
 
-    private flatten(queryObj: ParsedUrlQuery): HARParam[] {
+    private parseQueryString(requestUrl: string): HARParam[] {
+        let urlObject: URL;
+        try {
+            urlObject = new URL(requestUrl);
+        } catch {
+            // `httpsnippet` accepts urls without protocol, which cannot be parsed directly by URL.
+            urlObject = new URL(`http://${requestUrl}`);
+        }
+        const queryObj = urlObject.searchParams;
         const queryParams: HARParam[] = [];
-        Object.keys(queryObj).forEach(name => {
-            const value = queryObj[name];
-            if (Array.isArray(value)) {
-                queryParams.push(...value.map(v => new HARParam(name, v)));
+        for (const name of new Set(queryObj.keys())) {
+            const values = queryObj.getAll(name);
+            if (values.length > 1) {
+                queryParams.push(...values.map(v => new HARParam(name, v)));
             } else {
-                queryParams.push(new HARParam(name, value || ''));
+                queryParams.push(new HARParam(name, queryObj.get(name) || ''));
             }
-        });
+        }
         return queryParams;
     }
 }

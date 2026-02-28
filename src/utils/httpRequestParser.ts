@@ -1,3 +1,5 @@
+import CombinedStream from 'combined-stream';
+import encodeurl from 'encodeurl';
 import * as fs from 'fs-extra';
 import { EOL } from 'os';
 import { Stream } from 'stream';
@@ -10,9 +12,6 @@ import { getContentType, getHeader, removeHeader } from './misc';
 import { parseRequestHeaders, resolveRequestBodyPath } from './requestParserUtil';
 import { convertStreamToString } from './streamUtility';
 import { VariableProcessor } from "./variableProcessor";
-
-const CombinedStream = require('combined-stream');
-const encodeurl = require('encodeurl');
 
 enum ParseState {
     URL,
@@ -32,7 +31,7 @@ export class HttpRequestParser implements RequestParser {
     public async parseHttpRequest(name?: string): Promise<HttpRequest> {
         // parse follows http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
         // split the request raw text into lines
-        const lines: string[] = this.requestRawText.split(EOL);
+        const lines: string[] = this.requestRawText.split(/\r?\n/);
         const requestLines: string[] = [];
         const headersLines: string[] = [];
         const bodyLines: string[] = [];
@@ -154,7 +153,7 @@ export class HttpRequestParser implements RequestParser {
         let match: RegExpExecArray | null;
         if (match = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|LOCK|UNLOCK|PROPFIND|PROPPATCH|COPY|MOVE|MKCOL|MKCALENDAR|ACL|SEARCH)\s+/i.exec(line)) {
             method = match[1];
-            url = line.substr(match[0].length);
+            url = line.slice(match[0].length);
         } else {
             // Only provides request url
             method = this.defaultMethod;
@@ -164,7 +163,7 @@ export class HttpRequestParser implements RequestParser {
         url = url.trim();
 
         if (match = /\s+HTTP\/.*$/i.exec(url)) {
-            url = url.substr(0, match.index);
+            url = url.slice(0, match.index);
         }
 
         return { method, url };

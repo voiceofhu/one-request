@@ -1,9 +1,9 @@
 import { createScanner, SyntaxKind } from 'jsonc-parser';
 import * as os from 'os';
+import { pd } from 'pretty-data';
 import { window } from 'vscode';
 import { MimeUtility } from './mimeUtility';
 import { isJSONString } from './misc';
-const pd = require('pretty-data').pd;
 
 export class ResponseFormatUtility {
 
@@ -55,7 +55,7 @@ export class ResponseFormatUtility {
             const token = scanner.scan();
             const offset = scanner.getTokenOffset();
             const length = scanner.getTokenLength();
-            const value = text.substr(offset, length);
+            const value = text.slice(offset, offset + length);
             return [ token, value ];
         }
 

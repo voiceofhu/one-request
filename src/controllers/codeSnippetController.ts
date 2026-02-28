@@ -1,5 +1,6 @@
+import encodeUrl from 'encodeurl';
+import HTTPSnippet from 'httpsnippet';
 import { EOL } from 'os';
-import * as url from 'url';
 import { Clipboard, env, ExtensionContext, QuickInputButtons, window } from 'vscode';
 import Logger from '../logger';
 import { IRestClientSettings, RequestSettings, RestClientSettings } from '../models/configurationSettings';
@@ -13,9 +14,6 @@ import { Telemetry } from '../utils/telemetry';
 import { getCurrentTextDocument } from '../utils/workspaceUtility';
 import { CodeSnippetWebview } from '../views/codeSnippetWebview';
 
-const encodeUrl = require('encodeurl');
-const HTTPSnippet = require('httpsnippet');
-
 type CodeSnippetClient = {
     key: string;
     title: string;
@@ -28,6 +26,17 @@ type CodeSnippetTarget = {
     title: string;
     clients: CodeSnippetClient[];
 };
+
+type TargetQuickPickItem = CodeSnippetTarget & {
+    label: string;
+};
+
+type ClientQuickPickItem = CodeSnippetClient & {
+    label: string;
+    detail: string;
+};
+
+type CodeSnippetQuickPickItem = TargetQuickPickItem | ClientQuickPickItem;
 
 export class CodeSnippetController {
     private readonly _availableTargets: CodeSnippetTarget[] = HTTPSnippet.availableTargets();
@@ -61,10 +70,10 @@ export class CodeSnippetController {
         const harHttpRequest = this.convertToHARHttpRequest(httpRequest);
         const snippet = new HTTPSnippet(harHttpRequest);
 
-        let target: Pick<CodeSnippetTarget, 'key' | 'title'> | undefined = undefined;
+        let target: CodeSnippetTarget | undefined;
 
-        const quickPick = window.createQuickPick();
-        const targetQuickPickItems = this._availableTargets.map(target => ({ label: target.title, ...target }));
+        const quickPick = window.createQuickPick<CodeSnippetQuickPickItem>();
+        const targetQuickPickItems: TargetQuickPickItem[] = this._availableTargets.map(target => ({ label: target.title, ...target }));
         quickPick.title = 'Generate Code Snippet';
         quickPick.step = 1;
         quickPick.totalSteps = 2;
@@ -80,12 +89,19 @@ export class CodeSnippetController {
         });
         quickPick.onDidAccept(() => {
             const selectedItem = quickPick.selectedItems[0];
+            if (!selectedItem) {
+                return;
+            }
+
             if (quickPick.step === 1) {
+                if (!('clients' in selectedItem)) {
+                    return;
+                }
                 quickPick.value = '';
                 quickPick.step++;
                 quickPick.buttons = [QuickInputButtons.Back];
-                target = selectedItem as any as CodeSnippetTarget;
-                quickPick.items = (target as CodeSnippetTarget).clients.map(
+                target = selectedItem;
+                quickPick.items = target.clients.map(
                     client => ({
                         label: client.title,
                         detail: client.link,
@@ -93,9 +109,12 @@ export class CodeSnippetController {
                     })
                 );
             } else if (quickPick.step === 2) {
-                const { key: ck, title: ct } = selectedItem as any as CodeSnippetClient;
-                const { key: tk, title: tt } = target!;
-                Telemetry.sendEvent('Generate Code Snippet', { 'target': target!.key, 'client': ck });
+                if (!('detail' in selectedItem) || !target) {
+                    return;
+                }
+                const { key: ck, title: ct } = selectedItem;
+                const { key: tk, title: tt } = target;
+                Telemetry.sendEvent('Generate Code Snippet', { 'target': target.key, 'client': ck });
                 const result = snippet.convert(tk, ck);
 
                 quickPick.hide();
@@ -131,7 +150,7 @@ export class CodeSnippetController {
         const httpRequest = await RequestParserFactory.createRequestParser(text, settings).parseHttpRequest();
 
         const harHttpRequest = this.convertToHARHttpRequest(httpRequest);
-        const addPrefix = !(url.parse(harHttpRequest.url).protocol);
+        const addPrefix = !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(harHttpRequest.url);
         const originalUrl = harHttpRequest.url;
         if (addPrefix) {
             // Add protocol for url that doesn't specify protocol to pass the HTTPSnippet validation #328
@@ -195,9 +214,9 @@ export class CodeSnippetController {
     private static normalizeAuthHeader(authHeader: string) {
         if (authHeader) {
             const start = authHeader.indexOf(' ');
-            const scheme = authHeader.substr(0, start);
+            const scheme = authHeader.slice(0, start);
             if (scheme.toLowerCase() === 'basic') {
-                const params = authHeader.substr(start).trim().split(' ');
+                const params = authHeader.slice(start).trim().split(' ');
                 if (params.length === 2) {
                     return `Basic ${base64(`${params[0]}:${params[1]}`)}`;
                 } else if (params.length === 1 && params[0].includes(':')) {

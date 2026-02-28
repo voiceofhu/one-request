@@ -1,12 +1,11 @@
+import { JSONPath } from 'jsonpath-plus';
+import { DOMParser } from 'xmldom';
+import * as xpath from 'xpath';
 import { HttpRequest } from "../models/httpRequest";
 import { HttpResponse } from '../models/httpResponse';
 import { ResolveErrorMessage, ResolveResult, ResolveState, ResolveWarningMessage } from "../models/httpVariableResolveResult";
 import { MimeUtility } from './mimeUtility';
 import { getContentType, getHeader, isJSONString } from './misc';
-
-const xpath = require('xpath');
-const { DOMParser } = require('xmldom');
-const { JSONPath } = require('jsonpath-plus');
 
 const requestVariablePathRegex: RegExp = /^(\w+)(?:\.(request|response)(?:\.(body|headers)(?:\.(.*))?)?)?$/;
 
@@ -96,7 +95,7 @@ export class RequestVariableCacheValueProcessor {
         }
     }
 
-    private static resolveJsonHttpBody(body: any, path: string): ResolveResult {
+    private static resolveJsonHttpBody(body: unknown, path: string): ResolveResult {
         try {
             const result = JSONPath({ path, json: body });
             const value = typeof result[0] === 'string' ? result[0] : JSON.stringify(result[0]);
@@ -110,9 +109,9 @@ export class RequestVariableCacheValueProcessor {
         }
     }
 
-    private static resolveXmlHttpBody(body: any, path: string): ResolveResult {
+    private static resolveXmlHttpBody(body: unknown, path: string): ResolveResult {
         try {
-            const doc = new DOMParser().parseFromString(body);
+            const doc = new DOMParser().parseFromString(String(body));
             const results = xpath.select(path, doc);
             if (typeof results === 'string') {
                 return { state: ResolveState.Success, value: results };

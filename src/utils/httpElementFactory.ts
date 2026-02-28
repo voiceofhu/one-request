@@ -1,4 +1,3 @@
-import * as url from 'url';
 import { MarkdownString, SnippetString, TextDocument, window } from 'vscode';
 import * as Constants from '../common/constants';
 import { ElementType, HttpElement } from '../models/httpElement';
@@ -218,12 +217,18 @@ export class HttpElementFactory {
         const historyItems = await UserDataManager.getRequestHistory();
         const distinctRequestUrls = new Set(historyItems.map(item => item.url));
         distinctRequestUrls.forEach(requestUrl => {
-            const protocol = url.parse(requestUrl).protocol;
+            const protocol = (() => {
+                try {
+                    return new URL(requestUrl).protocol;
+                } catch {
+                    return undefined;
+                }
+            })();
             if (!protocol) {
                 return;
             }
             const prefixLength = protocol.length + 2; // https: + //
-            originalElements.push(new HttpElement(`${requestUrl.substr(prefixLength)}`, ElementType.URL, '^\\s*(?:(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|LOCK|UNLOCK|PROPFIND|PROPPATCH|COPY|MOVE|MKCOL|MKCALENDAR|ACL|SEARCH)\\s+)https?\\:\\/{2}'));
+            originalElements.push(new HttpElement(`${requestUrl.slice(prefixLength)}`, ElementType.URL, '^\\s*(?:(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|LOCK|UNLOCK|PROPFIND|PROPPATCH|COPY|MOVE|MKCOL|MKCALENDAR|ACL|SEARCH)\\s+)https?\\:\\/{2}'));
         });
 
         let elements: HttpElement[] = [];

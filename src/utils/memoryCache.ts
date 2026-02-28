@@ -1,11 +1,6 @@
-export class OidcPayload {
-    public access_token: string;
-    public refresh_token: string;
-}
-
 export class MemoryCache<T> {
     private cache = new Map<string, T>();
-    private static caches = new Map<string, MemoryCache<any>>();
+    private static caches = new Map<string, MemoryCache<unknown>>();
 
     public static createOrGet<T>(name: string): MemoryCache<T> {
         if (!this.caches.has(name)) {

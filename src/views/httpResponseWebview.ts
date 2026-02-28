@@ -1,4 +1,6 @@
+import * as contentDisposition from 'content-disposition';
 import * as fs from 'fs-extra';
+import hljs from 'highlight.js';
 import * as os from 'os';
 import { Clipboard, commands, env, ExtensionContext, Uri, ViewColumn, WebviewPanel, window, workspace } from 'vscode';
 import { SystemSettings } from '../models/configurationSettings';
@@ -12,9 +14,6 @@ import { base64, formatHeaders, getHeader, isJSONString } from '../utils/misc';
 import { ResponseFormatUtility } from '../utils/responseFormatUtility';
 import { UserDataManager } from '../utils/userDataManager';
 import { BaseWebview } from './baseWebview';
-
-const hljs = require('highlight.js');
-const contentDisposition = require('content-disposition');
 
 const OPEN = 'Open';
 const COPYPATH = 'Copy Path';
@@ -46,7 +45,8 @@ export class HttpResponseWebview extends BaseWebview {
     }
 
     private setIsHTMLResponse(response: HttpResponse | undefined) {
-        if (response?.headers['Content-Type']?.includes('text/html')) {
+        const contentType = response ? getHeader(response.headers, 'content-type')?.toString().toLowerCase() : undefined;
+        if (contentType?.includes('text/html')) {
             commands.executeCommand('setContext', this.isHTMLResponse, true);
         } else {
             commands.executeCommand('setContext', this.isHTMLResponse, false);
@@ -143,7 +143,7 @@ export class HttpResponseWebview extends BaseWebview {
     @trace('HTML Preview')
     private previewResponseBody() {
         if (this.activeResponse && this.activePanel) {
-            this.activePanel.webview.html = this.activeResponse.body;
+            this.activePanel.webview.html = this.getHtmlForHtmlResponsePreview(this.activePanel, this.activeResponse);
         }
     }
 
@@ -250,7 +250,7 @@ export class HttpResponseWebview extends BaseWebview {
 
         // Content Security Policy
         const nonce = new Date().getTime() + '' + new Date().getMilliseconds();
-        const csp = this.getCsp(nonce);
+        const csp = this.getCsp(panel, nonce);
         return `
     <head>
         <link rel="stylesheet" type="text/css" href="${panel.webview.asWebviewUri(this.baseFilePath)}">
@@ -276,6 +276,37 @@ export class HttpResponseWebview extends BaseWebview {
     </body>`;
     }
 
+    private getHtmlForHtmlResponsePreview(panel: WebviewPanel, response: HttpResponse): string {
+        const nonce = new Date().getTime() + '' + new Date().getMilliseconds();
+        const csp = this.getCsp(panel, nonce);
+        const body = JSON.stringify(response.body);
+        return `
+    <head>
+        ${csp}
+        <style>
+            html, body, iframe {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                border: 0;
+            }
+            body {
+                background: transparent;
+            }
+        </style>
+        <script nonce="${nonce}">
+            document.addEventListener('DOMContentLoaded', function () {
+                const iframe = document.getElementById('response-html-preview');
+                iframe.srcdoc = ${body};
+            });
+        </script>
+    </head>
+    <body>
+        <iframe id="response-html-preview" sandbox="allow-forms allow-popups allow-modals" referrerpolicy="no-referrer"></iframe>
+    </body>`;
+    }
+
     private highlightResponse(response: HttpResponse): string {
         let code = '';
         const previewOption = this.settings.previewOption;
@@ -284,7 +315,7 @@ export class HttpResponseWebview extends BaseWebview {
             const request = response.request;
             const requestNonBodyPart = `${request.method} ${request.url} HTTP/1.1
 ${formatHeaders(request.headers)}`;
-            code += hljs.highlight('http', requestNonBodyPart + '\r\n').value;
+            code += hljs.highlight(requestNonBodyPart + '\r\n', { language: 'http' }).value;
             if (request.body) {
                 if (typeof request.body !== 'string') {
                     request.body = 'NOTE: Request Body From File Is Not Shown';
@@ -292,7 +323,7 @@ ${formatHeaders(request.headers)}`;
                 const requestBodyPart = `${ResponseFormatUtility.formatBody(request.body, request.contentType, true)}`;
                 const bodyLanguageAlias = HttpResponseWebview.getHighlightLanguageAlias(request.contentType, request.body);
                 if (bodyLanguageAlias) {
-                    code += hljs.highlight(bodyLanguageAlias, requestBodyPart).value;
+                    code += hljs.highlight(requestBodyPart, { language: bodyLanguageAlias }).value;
                 } else {
                     code += hljs.highlightAuto(requestBodyPart).value;
                 }
@@ -305,7 +336,7 @@ ${formatHeaders(request.headers)}`;
         if (previewOption !== PreviewOption.Body) {
             const responseNonBodyPart = `HTTP/${response.httpVersion} ${response.statusCode} ${response.statusMessage}
 ${formatHeaders(response.headers)}`;
-            code += hljs.highlight('http', responseNonBodyPart + (previewOption !== PreviewOption.Headers ? '\r\n' : '')).value;
+            code += hljs.highlight(responseNonBodyPart + (previewOption !== PreviewOption.Headers ? '\r\n' : ''), { language: 'http' }).value;
         }
 
         if (previewOption !== PreviewOption.Headers) {
@@ -316,7 +347,7 @@ ${formatHeaders(response.headers)}`;
             } else {
                 const bodyLanguageAlias = HttpResponseWebview.getHighlightLanguageAlias(response.contentType, responseBodyPart);
                 if (bodyLanguageAlias) {
-                    code += hljs.highlight(bodyLanguageAlias, responseBodyPart).value;
+                    code += hljs.highlight(responseBodyPart, { language: bodyLanguageAlias }).value;
                 } else {
                     code += hljs.highlightAuto(responseBodyPart).value;
                 }
@@ -352,8 +383,9 @@ ${formatHeaders(response.headers)}`;
             '</style>'].join('\n');
     }
 
-    private getCsp(nonce: string): string {
-        return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' http: https: data: vscode-resource:; script-src 'nonce-${nonce}'; style-src 'self' 'unsafe-inline' http: https: data: vscode-resource:;">`;
+    private getCsp(panel: WebviewPanel, nonce: string): string {
+        const cspSource = panel.webview.cspSource;
+        return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; script-src 'nonce-${nonce}'; style-src ${cspSource} 'unsafe-inline'; frame-src ${cspSource};">`;
     }
 
     private addLineNums(code): string {
@@ -414,8 +446,8 @@ ${formatHeaders(response.headers)}`;
                 }
             });
 
-            const url = match.substr(0, urlEndPosition);
-            const extraCharacters = match.substr(urlEndPosition);
+            const url = match.slice(0, urlEndPosition);
+            const extraCharacters = match.slice(urlEndPosition);
 
             return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + extraCharacters;
         });

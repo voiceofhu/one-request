@@ -105,8 +105,8 @@ export class AadV2TokenProvider {
         return tokenResponse.access_token;
     }
 
-    private processAuthErrorAndThrow(bodyObject: any) {
-        const errorResponse: IAuthError = bodyObject;
+    private processAuthErrorAndThrow(bodyObject: unknown) {
+        const errorResponse = bodyObject as IAuthError;
         throw new Error("Auth call failed. " + errorResponse.error_description);
     }
 

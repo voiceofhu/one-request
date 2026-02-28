@@ -12,7 +12,7 @@
             "sourceMaps": true,
             "smartStep": true,
             "outFiles": [ "${workspaceFolder}/dist/**/*.js" ],
-            "preLaunchTask": "npm: webpack",
+            "preLaunchTask": "npm: watch",
             "trace": true
         }
     ]

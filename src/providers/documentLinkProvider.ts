@@ -1,17 +1,16 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import * as url from 'url';
 import { CancellationToken, DocumentLink, DocumentLinkProvider, Position, Range, TextDocument, Uri } from 'vscode';
 import * as Constants from '../common/constants';
 import { getWorkspaceRootPath } from '../utils/workspaceUtility';
 
 export class RequestBodyDocumentLinkProvider implements DocumentLinkProvider {
 
-    private _linkPattern = /^(\<(?:@(?:\w+)?)?\s+)(.+)(\s*)$/g;
+    private _linkPattern = /^(\<(?:@(?:\w+)?)?\s+)(.+)(\s*)$/;
 
     public provideDocumentLinks(document: TextDocument, _token: CancellationToken): DocumentLink[] {
         const results: DocumentLink[] = [];
-        const base = path.dirname(document.uri.toString());
+        const base = path.dirname(document.uri.fsPath);
         const text = document.getText();
 
         const lines: string[] = text.split(Constants.LineSplitterRegex);
@@ -25,7 +24,7 @@ export class RequestBodyDocumentLinkProvider implements DocumentLinkProvider {
                 const linkEnd = new Position(index, offset + filePath.length);
                 results.push(new DocumentLink(
                     new Range(linkStart, linkEnd),
-                    this.normalizeLink(document, filePath, base)
+                    this.normalizeLink(filePath, base)
                 ));
             }
         }
@@ -33,27 +32,20 @@ export class RequestBodyDocumentLinkProvider implements DocumentLinkProvider {
         return results;
     }
 
-    private normalizeLink(document: TextDocument, link: string, base: string): Uri {
-        let resourcePath: Uri;
+    private normalizeLink(link: string, base: string): Uri {
+        let resourcePath: string;
         if (path.isAbsolute(link)) {
-            resourcePath = Uri.file(link);
+            resourcePath = link;
         } else {
-            let rootPath = getWorkspaceRootPath();
+            const rootPath = getWorkspaceRootPath();
             if (rootPath) {
-                rootPath = rootPath.replace(/\/?$/, '/');
-                let resourcePathString = url.resolve(rootPath, link);
-                if (!fs.existsSync(resourcePathString)) {
-                    base = base.replace(/\/?$/, '/');
-                    resourcePathString = url.resolve(base, link);
-                }
-
-                resourcePath = Uri.parse(resourcePathString);
+                const workspacePath = path.resolve(rootPath, link);
+                resourcePath = fs.existsSync(workspacePath) ? workspacePath : path.resolve(base, link);
             } else {
-                base = base.replace(/\/?$/, '/');
-                resourcePath = Uri.parse(url.resolve(base, link));
+                resourcePath = path.resolve(base, link);
             }
         }
 
-        return Uri.parse(`command:rest-client._openDocumentLink?${encodeURIComponent(JSON.stringify({ path: resourcePath }))}`);
+        return Uri.parse(`command:rest-client._openDocumentLink?${encodeURIComponent(JSON.stringify({ path: Uri.file(resourcePath).toString() }))}`);
     }
 }

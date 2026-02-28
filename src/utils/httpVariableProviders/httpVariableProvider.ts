@@ -7,8 +7,8 @@ export type HttpVariableValue = string | {} | HttpResponse;
 export interface HttpVariable {
     name: string;
     value?: HttpVariableValue;
-    error?: any;
-    warning?: any;
+    error?: unknown;
+    warning?: unknown;
 }
 
 export interface HttpVariableContext {
