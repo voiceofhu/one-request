@@ -36,9 +36,16 @@ export class HARPostData {
 }
 
 export class HARHttpRequest {
+    public httpVersion: string;
+    public headersSize: number;
+    public bodySize: number;
     public queryString: HARParam[];
 
     public constructor(public method: string, public url: string, public headers: HARHeader[], public cookies: HARCookie[], public postData?: HARPostData) {
+        // HAR spec allows -1 when size is unknown.
+        this.httpVersion = 'HTTP/1.1';
+        this.headersSize = -1;
+        this.bodySize = postData?.text?.length ?? 0;
         this.queryString = this.parseQueryString(url);
     }
 

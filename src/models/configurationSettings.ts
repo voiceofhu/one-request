@@ -16,7 +16,7 @@ export type HostCertificates = {
     }
 };
 
-export interface IRestClientSettings {
+export interface IOneRequestSettings {
     readonly followRedirect: boolean;
     readonly strictSSL: boolean;
     readonly defaultHeaders: RequestHeaders;
@@ -53,7 +53,7 @@ export interface IRestClientSettings {
     readonly useContentDispositionFilename: boolean;
 }
 
-export class SystemSettings implements IRestClientSettings {
+export class SystemSettings implements IOneRequestSettings {
     private _followRedirect: boolean;
     private _strictSSL: boolean;
     private _defaultHeaders: RequestHeaders;
@@ -261,47 +261,47 @@ export class SystemSettings implements IRestClientSettings {
 
     private initializeSettings() {
         const document = getCurrentTextDocument();
-        const restClientSettings = workspace.getConfiguration("rest-client", document?.uri);
-        this._followRedirect = restClientSettings.get<boolean>("followredirect", true);
-        this._strictSSL = restClientSettings.get<boolean>("strictSSL", true);
-        this._defaultHeaders = restClientSettings.get<RequestHeaders>("defaultHeaders",
+        const oneRequestSettings = workspace.getConfiguration("one-request", document?.uri);
+        this._followRedirect = oneRequestSettings.get<boolean>("followredirect", true);
+        this._strictSSL = oneRequestSettings.get<boolean>("strictSSL", true);
+        this._defaultHeaders = oneRequestSettings.get<RequestHeaders>("defaultHeaders",
                                                                      {
-                                                                         "User-Agent": "vscode-restclient"
+                                                                         "User-Agent": "one-request"
                                                                      });
-        this._showResponseInDifferentTab = restClientSettings.get<boolean>("showResponseInDifferentTab", false);
-        this._requestNameAsResponseTabTitle = restClientSettings.get<boolean>("requestNameAsResponseTabTitle", false);
-        this._rememberCookiesForSubsequentRequests = restClientSettings.get<boolean>("rememberCookiesForSubsequentRequests", true);
-        this._timeoutInMilliseconds = restClientSettings.get<number>("timeoutinmilliseconds", 0);
+        this._showResponseInDifferentTab = oneRequestSettings.get<boolean>("showResponseInDifferentTab", false);
+        this._requestNameAsResponseTabTitle = oneRequestSettings.get<boolean>("requestNameAsResponseTabTitle", false);
+        this._rememberCookiesForSubsequentRequests = oneRequestSettings.get<boolean>("rememberCookiesForSubsequentRequests", true);
+        this._timeoutInMilliseconds = oneRequestSettings.get<number>("timeoutinmilliseconds", 0);
         if (this._timeoutInMilliseconds < 0) {
             this._timeoutInMilliseconds = 0;
         }
-        this._excludeHostsForProxy = restClientSettings.get<string[]>("excludeHostsForProxy", []);
-        this._fontSize = restClientSettings.get<number>("fontSize");
-        this._fontFamily = restClientSettings.get<string>("fontFamily");
-        this._fontWeight = restClientSettings.get<string>("fontWeight");
+        this._excludeHostsForProxy = oneRequestSettings.get<string[]>("excludeHostsForProxy", []);
+        this._fontSize = oneRequestSettings.get<number>("fontSize");
+        this._fontFamily = oneRequestSettings.get<string>("fontFamily");
+        this._fontWeight = oneRequestSettings.get<string>("fontWeight");
 
-        this._environmentVariables = restClientSettings.get<{ [key: string]: { [key: string]: string } }>("environmentVariables", {});
-        this._mimeAndFileExtensionMapping = restClientSettings.get<{ [key: string]: string }>("mimeAndFileExtensionMapping", {});
+        this._environmentVariables = oneRequestSettings.get<{ [key: string]: { [key: string]: string } }>("environmentVariables", {});
+        this._mimeAndFileExtensionMapping = oneRequestSettings.get<{ [key: string]: string }>("mimeAndFileExtensionMapping", {});
 
-        this._previewResponseInUntitledDocument = restClientSettings.get<boolean>("previewResponseInUntitledDocument", false);
-        this._previewColumn = this.parseColumn(restClientSettings.get<string>("previewColumn", "beside"));
-        this._previewResponsePanelTakeFocus = restClientSettings.get<boolean>("previewResponsePanelTakeFocus", true);
-        this._hostCertificates = restClientSettings.get<HostCertificates>("certificates", {});
-        this._oidcCertificates = Object.assign({}, restClientSettings.get<HostCertificates>("oidcCertificates", {}));
-        this._oidcScopes = restClientSettings.get<string[]>("oidcScopes", ['openid', 'profile', 'email']);
-        this._disableHighlightResponseBodyForLargeResponse = restClientSettings.get<boolean>("disableHighlightResponseBodyForLargeResponse", true);
-        this._disableAddingHrefLinkForLargeResponse = restClientSettings.get<boolean>("disableAddingHrefLinkForLargeResponse", true);
-        this._largeResponseBodySizeLimitInMB = restClientSettings.get<number>("largeResponseBodySizeLimitInMB", 5);
-        this._previewOption = ParsePreviewOptionStr(restClientSettings.get<string>("previewOption", "full"));
-        this._formParamEncodingStrategy = ParseFormParamEncodingStr(restClientSettings.get<string>("formParamEncodingStrategy", "automatic"));
-        this._enableTelemetry = restClientSettings.get<boolean>('enableTelemetry', false);
-        this._suppressResponseBodyContentTypeValidationWarning = restClientSettings.get('suppressResponseBodyContentTypeValidationWarning', false);
-        this._addRequestBodyLineIndentationAroundBrackets = restClientSettings.get<boolean>('addRequestBodyLineIndentationAroundBrackets', true);
-        this._decodeEscapedUnicodeCharacters = restClientSettings.get<boolean>('decodeEscapedUnicodeCharacters', false);
-        this._logLevel = ParseLogLevelStr(restClientSettings.get<string>('logLevel', 'error'));
-        this._enableSendRequestCodeLens = restClientSettings.get<boolean>('enableSendRequestCodeLens', true);
-        this._enableCustomVariableReferencesCodeLens = restClientSettings.get<boolean>('enableCustomVariableReferencesCodeLens', true);
-        this._useContentDispositionFilename = restClientSettings.get<boolean>('useContentDispositionFilename', true);
+        this._previewResponseInUntitledDocument = oneRequestSettings.get<boolean>("previewResponseInUntitledDocument", false);
+        this._previewColumn = this.parseColumn(oneRequestSettings.get<string>("previewColumn", "beside"));
+        this._previewResponsePanelTakeFocus = oneRequestSettings.get<boolean>("previewResponsePanelTakeFocus", true);
+        this._hostCertificates = oneRequestSettings.get<HostCertificates>("certificates", {});
+        this._oidcCertificates = Object.assign({}, oneRequestSettings.get<HostCertificates>("oidcCertificates", {}));
+        this._oidcScopes = oneRequestSettings.get<string[]>("oidcScopes", ['openid', 'profile', 'email']);
+        this._disableHighlightResponseBodyForLargeResponse = oneRequestSettings.get<boolean>("disableHighlightResponseBodyForLargeResponse", true);
+        this._disableAddingHrefLinkForLargeResponse = oneRequestSettings.get<boolean>("disableAddingHrefLinkForLargeResponse", true);
+        this._largeResponseBodySizeLimitInMB = oneRequestSettings.get<number>("largeResponseBodySizeLimitInMB", 5);
+        this._previewOption = ParsePreviewOptionStr(oneRequestSettings.get<string>("previewOption", "full"));
+        this._formParamEncodingStrategy = ParseFormParamEncodingStr(oneRequestSettings.get<string>("formParamEncodingStrategy", "automatic"));
+        this._enableTelemetry = oneRequestSettings.get<boolean>('enableTelemetry', false);
+        this._suppressResponseBodyContentTypeValidationWarning = oneRequestSettings.get('suppressResponseBodyContentTypeValidationWarning', false);
+        this._addRequestBodyLineIndentationAroundBrackets = oneRequestSettings.get<boolean>('addRequestBodyLineIndentationAroundBrackets', true);
+        this._decodeEscapedUnicodeCharacters = oneRequestSettings.get<boolean>('decodeEscapedUnicodeCharacters', false);
+        this._logLevel = ParseLogLevelStr(oneRequestSettings.get<string>('logLevel', 'error'));
+        this._enableSendRequestCodeLens = oneRequestSettings.get<boolean>('enableSendRequestCodeLens', true);
+        this._enableCustomVariableReferencesCodeLens = oneRequestSettings.get<boolean>('enableCustomVariableReferencesCodeLens', true);
+        this._useContentDispositionFilename = oneRequestSettings.get<boolean>('useContentDispositionFilename', true);
         languages.setLanguageConfiguration('http', { brackets: this._addRequestBodyLineIndentationAroundBrackets ? this.brackets : [] });
 
         const httpSettings = workspace.getConfiguration("http");
@@ -321,7 +321,7 @@ export class SystemSettings implements IRestClientSettings {
     }
 }
 
-export class RequestSettings implements Partial<IRestClientSettings> {
+export class RequestSettings implements Partial<IOneRequestSettings> {
 
     private _followRedirect?: boolean = undefined;
 
@@ -344,7 +344,7 @@ export class RequestSettings implements Partial<IRestClientSettings> {
     }
 }
 
-export class RestClientSettings implements IRestClientSettings {
+export class OneRequestSettings implements IOneRequestSettings {
 
     public get followRedirect() {
         return this.requestSettings.followRedirect ?? this.systemSettings.followRedirect;

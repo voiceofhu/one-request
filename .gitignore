@@ -1,6 +1,7 @@
 out
 node_modules
 dist
+.test-dist
 *.vsix
 .DS_Store
 

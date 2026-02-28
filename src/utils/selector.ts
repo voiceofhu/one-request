@@ -19,6 +19,9 @@ interface PromptVariableDefinition {
 
 export class Selector {
     private static readonly responseStatusLineRegex = /^\s*HTTP\/[\d.]+/;
+    private static readonly passwordPromptNames = new Set([
+        'password', 'passwd', 'pass',
+    ]);
 
     public static async getRequest(editor: TextEditor, range: Range | null = null): Promise<SelectedRequest | null> {
         if (!editor.document) {
@@ -134,16 +137,20 @@ export class Selector {
                     break;
                 }
 
-                if (options.ignoreCommentLine && this.isCommentLine(startLine)
-                    || options.ignoreEmptyLine && this.isEmptyLine(startLine)
-                    || options.ignoreFileVariableDefinitionLine && this.isFileVariableDefinitionLine(startLine)) {
+                const shouldIgnoreStartLine =
+                    (options.ignoreCommentLine && this.isCommentLine(startLine))
+                    || (options.ignoreEmptyLine && this.isEmptyLine(startLine))
+                    || (options.ignoreFileVariableDefinitionLine && this.isFileVariableDefinitionLine(startLine));
+                if (shouldIgnoreStartLine) {
                     start++;
                     continue;
                 }
 
                 const endLine = lines[end];
-                if (options.ignoreCommentLine && this.isCommentLine(endLine)
-                    || options.ignoreEmptyLine && this.isEmptyLine(endLine)) {
+                const shouldIgnoreEndLine =
+                    (options.ignoreCommentLine && this.isCommentLine(endLine))
+                    || (options.ignoreEmptyLine && this.isEmptyLine(endLine));
+                if (shouldIgnoreEndLine) {
                     end--;
                     continue;
                 }
@@ -182,7 +189,7 @@ export class Selector {
         return matched?.[1];
     }
 
-    public static getPrompVariableDefinition(text: string): PromptVariableDefinition | undefined {
+    public static getPromptVariableDefinition(text: string): PromptVariableDefinition | undefined {
         const matched = text.match(Constants.PromptCommentRegex);
         if (matched) {
             const name = matched[1];
@@ -191,19 +198,35 @@ export class Selector {
         }
     }
 
+    // Kept for backward compatibility. Use getPromptVariableDefinition instead.
+    public static getPrompVariableDefinition(text: string): PromptVariableDefinition | undefined {
+        return this.getPromptVariableDefinition(text);
+    }
+
     public static parsePromptMetadataForVariableDefinitions(text: string | undefined) : PromptVariableDefinition[] {
-        const varDefs : PromptVariableDefinition[] = [];
-        const parsedDefs = JSON.parse(text || "[]");
-        if (Array.isArray(parsedDefs)) {
-            for (const parsedDef of parsedDefs) {
-                varDefs.push({
-                    name: parsedDef['name'],
-                    description: parsedDef['description']
-                });
-            }
+        if (!text) {
+            return [];
         }
 
-        return varDefs;
+        try {
+            const parsedDefs = JSON.parse(text);
+            if (!Array.isArray(parsedDefs)) {
+                return [];
+            }
+
+            return parsedDefs
+                .filter((parsedDef): parsedDef is { name: string; description?: string } =>
+                    !!parsedDef &&
+                    typeof parsedDef === 'object' &&
+                    typeof parsedDef.name === 'string' &&
+                    (parsedDef.description === undefined || typeof parsedDef.description === 'string'))
+                .map(parsedDef => ({
+                    name: parsedDef.name,
+                    description: parsedDef.description
+                }));
+        } catch {
+            return [];
+        }
     }
 
     public static getDelimitedText(fullText: string, currentLine: number): string | null {
@@ -269,7 +292,7 @@ export class Selector {
     }
 
     private static handlePromptMetadata(metadatas: Map<RequestMetadata, string | undefined> , text: string) {
-        const promptVarDef = this.getPrompVariableDefinition(text);
+        const promptVarDef = this.getPromptVariableDefinition(text);
         if (promptVarDef) {
             const varDefs = this.parsePromptMetadataForVariableDefinitions(metadatas.get(RequestMetadata.Prompt));
             varDefs.push(promptVarDef);
@@ -281,11 +304,7 @@ export class Selector {
         const promptVariables = new Map<string, string>();
         for (const { name, description } of defs) {
             // In name resembles some kind of password prompt, enable password InputBox option
-            const passwordPromptNames = ['password', 'Password', 'PASSWORD', 'passwd', 'Passwd', 'PASSWD', 'pass', 'Pass', 'PASS'];
-            let password = false;
-            if (passwordPromptNames.includes(name)) {
-                password = true;
-            }
+            const password = this.passwordPromptNames.has(name.toLowerCase());
             const value = await window.showInputBox({
                 prompt: `Input value for "${name}"`,
                 placeHolder: description,

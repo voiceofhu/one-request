@@ -1,10 +1,10 @@
 ---
 name: Bug report
-about: Create a report to help REST Client improve
+about: Create a report to help One Request improve
 
 ---
 
-- REST Client Version:
+- One Request Version:
 - VSCode Version:
 - OS Version:
 

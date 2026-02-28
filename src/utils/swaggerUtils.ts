@@ -10,27 +10,36 @@ type OpenApiSchema = {
 };
 
 type OpenApiDocument = {
-  info: { title: string };
-  servers: Array<{ url: string }>;
-  paths: Record<string, Record<string, unknown>>;
-  components: Record<string, unknown>;
+  info?: { title?: string };
+  servers?: Array<{ url?: string }>;
+  paths?: Record<string, Record<string, unknown>>;
+  components?: Record<string, unknown>;
+};
+
+type OpenApiOperation = {
+  summary?: string;
+  requestBody?: { content: Record<string, { schema: OpenApiSchema }> };
 };
 
 export class SwaggerUtils {
-  generateRestClientOutput(openApiYaml: OpenApiDocument): string {
-    const info = openApiYaml.info;
-    const baseUrl = `${openApiYaml.servers[0].url}`;
-    const paths = openApiYaml.paths;
-    const components = openApiYaml.components;
+  generateOneRequestOutput(openApiYaml: OpenApiDocument): string {
+    const infoTitle = openApiYaml.info?.title ?? "OpenAPI";
+    const baseUrl = `${openApiYaml.servers?.[0]?.url ?? ""}`;
+    const paths = openApiYaml.paths ?? {};
+    const components = openApiYaml.components ?? {};
 
-    let restClientOutput = "";
-    restClientOutput += `### ${info.title}\n`;
+    let oneRequestOutput = "";
+    oneRequestOutput += `### ${infoTitle}\n`;
 
     for (const endpoint in paths) {
       const methods = paths[endpoint];
       for (const operation in methods) {
         const details = methods[operation];
-        restClientOutput += this.generateOperationBlock(
+        if (!this.isOpenApiOperation(details)) {
+          continue;
+        }
+
+        oneRequestOutput += this.generateOperationBlock(
           operation,
           baseUrl,
           endpoint,
@@ -39,14 +48,14 @@ export class SwaggerUtils {
         );
       }
     }
-    return restClientOutput;
+    return oneRequestOutput;
   }
 
   generateOperationBlock(
     operation: string,
     baseUrl: string,
     endpoint: string,
-    details: { summary?: string; requestBody?: { content: Record<string, { schema: OpenApiSchema }> } },
+    details: OpenApiOperation,
     components: Record<string, unknown>,
   ): string {
     const summary = details.summary ? `- ${details.summary}` : "";
@@ -112,9 +121,13 @@ export class SwaggerUtils {
   parseOpenApiYaml(data: string): string | undefined {
     try {
       const openApiYaml = yaml.load(data) as OpenApiDocument;
-      return this.generateRestClientOutput(openApiYaml);
+      return this.generateOneRequestOutput(openApiYaml);
     } catch (error) {
       throw error;
     }
+  }
+
+  private isOpenApiOperation(value: unknown): value is OpenApiOperation {
+    return !!value && typeof value === "object";
   }
 }

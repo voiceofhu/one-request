@@ -4,7 +4,7 @@ import { LogLevel } from "./models/logLevel";
 
 class Log {
   private readonly _outputChannel: OutputChannel;
-  private readonly _restClientSettings: SystemSettings =
+  private readonly _oneRequestSettings: SystemSettings =
     SystemSettings.Instance;
   public constructor() {
     this._outputChannel = window.createOutputChannel("One Request");
@@ -27,7 +27,7 @@ class Log {
   }
 
   public log(level: LogLevel, message: string, data?: unknown): void {
-    if (level >= this._restClientSettings.logLevel) {
+    if (level >= this._oneRequestSettings.logLevel) {
       this._outputChannel.appendLine(
         `[${LogLevel[level]} - ${new Date().toLocaleTimeString()}] ${message}`,
       );

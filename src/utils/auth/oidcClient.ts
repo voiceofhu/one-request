@@ -8,7 +8,7 @@ import { SecureContextOptions } from "tls";
 import { v4 as uuid } from "uuid";
 import { env, Uri, window } from "vscode";
 import {
-  IRestClientSettings,
+  IOneRequestSettings,
   SystemSettings,
 } from "../../models/configurationSettings";
 import { MemoryCache } from "../memoryCache";
@@ -131,7 +131,7 @@ export class CodeLoopbackClient {
         resolve({ url, ...authCodeResponse });
       };
 
-      const settings = SystemSettings.Instance as IRestClientSettings;
+      const settings = SystemSettings.Instance as IOneRequestSettings;
 
       try {
         const certificates = this.getSslCertificate(settings);
@@ -177,7 +177,7 @@ export class CodeLoopbackClient {
   }
 
   private getSslCertificate(
-    settings: IRestClientSettings,
+    settings: IOneRequestSettings,
   ): SecureContextOptions | null {
     const {
       cert: certPath,
@@ -650,7 +650,7 @@ export class OidcClient {
    * @param scopes
    */
   private getScopes(scopes: string[] = []): string[] {
-    const settings = SystemSettings.Instance as IRestClientSettings;
+    const settings = SystemSettings.Instance as IOneRequestSettings;
 
     const modifiedScopes = [...(settings.oidcScopes ?? []), ...scopes];
     return Array.from(new Set(modifiedScopes.sort()));

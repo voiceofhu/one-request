@@ -1,9 +1,9 @@
 import encodeUrl from 'encodeurl';
-import HTTPSnippet from 'httpsnippet';
+import { availableTargets, HTTPSnippet } from 'httpsnippet';
 import { EOL } from 'os';
 import { Clipboard, env, ExtensionContext, QuickInputButtons, window } from 'vscode';
 import Logger from '../logger';
-import { IRestClientSettings, RequestSettings, RestClientSettings } from '../models/configurationSettings';
+import { IOneRequestSettings, RequestSettings, OneRequestSettings } from '../models/configurationSettings';
 import { HARCookie, HARHeader, HARHttpRequest, HARPostData } from '../models/harHttpRequest';
 import { HttpRequest } from '../models/httpRequest';
 import { RequestParserFactory } from '../models/requestParserFactory';
@@ -15,14 +15,14 @@ import { getCurrentTextDocument } from '../utils/workspaceUtility';
 import { CodeSnippetWebview } from '../views/codeSnippetWebview';
 
 type CodeSnippetClient = {
-    key: string;
+    key: NonNullable<Parameters<HTTPSnippet['convert']>[1]>;
     title: string;
     link: string;
     description: string;
 };
 
 type CodeSnippetTarget = {
-    key: string;
+    key: Parameters<HTTPSnippet['convert']>[0];
     title: string;
     clients: CodeSnippetClient[];
 };
@@ -39,7 +39,7 @@ type ClientQuickPickItem = CodeSnippetClient & {
 type CodeSnippetQuickPickItem = TargetQuickPickItem | ClientQuickPickItem;
 
 export class CodeSnippetController {
-    private readonly _availableTargets: CodeSnippetTarget[] = HTTPSnippet.availableTargets();
+    private readonly _availableTargets: CodeSnippetTarget[] = availableTargets();
     private readonly clipboard: Clipboard;
     private _webview: CodeSnippetWebview;
 
@@ -62,13 +62,13 @@ export class CodeSnippetController {
 
         const { text, metadatas } = selectedRequest;
         const requestSettings = new RequestSettings(metadatas);
-        const settings: IRestClientSettings = new RestClientSettings(requestSettings);
+        const settings: IOneRequestSettings = new OneRequestSettings(requestSettings);
 
         // parse http request
         const httpRequest = await RequestParserFactory.createRequestParser(text, settings).parseHttpRequest();
 
         const harHttpRequest = this.convertToHARHttpRequest(httpRequest);
-        const snippet = new HTTPSnippet(harHttpRequest);
+        const snippet = new HTTPSnippet(this.ensureHarRequest(harHttpRequest));
 
         let target: CodeSnippetTarget | undefined;
 
@@ -115,7 +115,11 @@ export class CodeSnippetController {
                 const { key: ck, title: ct } = selectedItem;
                 const { key: tk, title: tt } = target;
                 Telemetry.sendEvent('Generate Code Snippet', { 'target': target.key, 'client': ck });
-                const result = snippet.convert(tk, ck);
+                const result = this.normalizeSnippetResult(snippet.convert(tk, ck));
+                if (!result) {
+                    window.showErrorMessage('Unable to generate code snippet for current target/client.');
+                    return;
+                }
 
                 quickPick.hide();
                 try {
@@ -144,7 +148,7 @@ export class CodeSnippetController {
 
         const { text, metadatas } = selectedRequest;
         const requestSettings = new RequestSettings(metadatas);
-        const settings: IRestClientSettings = new RestClientSettings(requestSettings);
+        const settings: IOneRequestSettings = new OneRequestSettings(requestSettings);
 
         // parse http request
         const httpRequest = await RequestParserFactory.createRequestParser(text, settings).parseHttpRequest();
@@ -156,11 +160,18 @@ export class CodeSnippetController {
             // Add protocol for url that doesn't specify protocol to pass the HTTPSnippet validation #328
             harHttpRequest.url = `http://${originalUrl}`;
         }
-        const snippet = new HTTPSnippet(harHttpRequest);
+        const snippet = new HTTPSnippet(this.ensureHarRequest(harHttpRequest));
         if (addPrefix) {
             snippet.requests[0].fullUrl = originalUrl;
         }
-        const result = snippet.convert('shell', 'curl', process.platform === 'win32' ? { indent: false } : {});
+        const result = this.normalizeSnippetResult(
+            snippet.convert('shell', 'curl', process.platform === 'win32' ? { indent: false } : {}),
+        );
+        if (!result) {
+            window.showErrorMessage('Unable to convert request to cURL.');
+            return;
+        }
+
         await this.clipboard.writeText(result);
     }
 
@@ -209,6 +220,22 @@ export class CodeSnippetController {
 
     public dispose() {
         this._webview.dispose();
+    }
+
+    private normalizeSnippetResult(result: string | false | string[]): string {
+        if (result === false) {
+            return '';
+        }
+
+        return Array.isArray(result) ? result.join(EOL) : result;
+    }
+
+    private ensureHarRequest(request: HARHttpRequest): HARHttpRequest & { postData: HARPostData } {
+        if (!request.postData) {
+            request.postData = new HARPostData('text/plain', '');
+        }
+
+        return request as HARHttpRequest & { postData: HARPostData };
     }
 
     private static normalizeAuthHeader(authHeader: string) {

@@ -11,7 +11,7 @@ export class MarkdownCodeLensProvider implements CodeLensProvider {
             const cmd: Command = {
                 arguments: [document, snippetRange],
                 title: 'Send Request',
-                command: 'rest-client.request',
+                command: 'one-request.request',
             };
             blocks.push(new CodeLens(range, cmd));
         }

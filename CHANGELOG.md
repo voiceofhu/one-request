@@ -543,7 +543,7 @@
 
 ## 0.0.5 (2016/4/5)
 * __Feature__: Follow HTTP 3xx responses as redirects, default is `TRUE`
-* __Feature__: Add default user agent if user not specified, default value is `vscode-restclient`
+* __Feature__: Add default user agent if user not specified, default value is `one-request`
 
 ## 0.0.4 (2016/4/1)
 * __Feature__: Allow clear output window before sending a new request

@@ -1,6 +1,8 @@
 import { builtinModules } from "module";
 import { defineConfig } from "vite";
 
+const enableSourceMap = process.env.VITE_SOURCEMAP === "true";
+
 export default defineConfig({
   build: {
     lib: {
@@ -9,7 +11,7 @@ export default defineConfig({
       fileName: () => "extension.js",
     },
     outDir: "dist",
-    sourcemap: true,
+    sourcemap: enableSourceMap,
     rollupOptions: {
       external: [
         "vscode", // provided at runtime by VS Code

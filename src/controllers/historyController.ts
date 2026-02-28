@@ -74,7 +74,7 @@ export class HistoryController {
   }
 
   private async createTempFile(): Promise<string> {
-    const file = path.join(tmpdir(), `vscode-restclient-${uuidv4()}.http`);
+    const file = path.join(tmpdir(), `one-request-${uuidv4()}.http`);
     await fs.ensureFile(file);
     return file;
   }

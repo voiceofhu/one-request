@@ -59,7 +59,7 @@ content-type: application/json
 - 点击请求上方 `Send Request`
 - 快捷键 `Ctrl+Alt+R`（macOS: `Cmd+Alt+R`）
 - 右键菜单选择 `Send Request`
-- `F1` 后输入 `Rest Client: Send Request`
+- `F1` 后输入 `One Request: Send Request`
 
 ## 多请求文件
 

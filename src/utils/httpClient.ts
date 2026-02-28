@@ -5,7 +5,7 @@ import { CookieJar, Store } from "tough-cookie";
 import { window } from "vscode";
 import { RequestHeaders, ResponseHeaders } from "../models/base";
 import {
-  IRestClientSettings,
+  IOneRequestSettings,
   SystemSettings,
 } from "../models/configurationSettings";
 import { HttpRequest } from "../models/httpRequest";
@@ -52,7 +52,7 @@ export class HttpClient {
 
   public async send(
     httpRequest: HttpRequest,
-    settings?: IRestClientSettings,
+    settings?: IOneRequestSettings,
   ): Promise<HttpResponse> {
     settings = settings || SystemSettings.Instance;
 
@@ -80,15 +80,9 @@ export class HttpClient {
 
     const response = await request;
 
-    const contentType = response.headers["content-type"];
-    let encoding: string | undefined;
-    if (contentType) {
-      encoding = MimeUtility.parse(contentType).charset;
-    }
-
-    if (!encoding) {
-      encoding = "utf8";
-    }
+    const encoding = this.resolveResponseEncoding(
+      response.headers["content-type"],
+    );
 
     const bodyBuffer = response.body;
     let bodyString = iconv.encodingExists(encoding)
@@ -140,17 +134,9 @@ export class HttpClient {
 
   private async prepareOptions(
     httpRequest: HttpRequest,
-    settings: IRestClientSettings,
+    settings: IOneRequestSettings,
   ): Promise<OptionsOfBufferResponseBody> {
-    const originalRequestBody = httpRequest.body;
-    let requestBody: string | Buffer | undefined;
-    if (originalRequestBody) {
-      if (typeof originalRequestBody !== "string") {
-        requestBody = await convertStreamToBuffer(originalRequestBody);
-      } else {
-        requestBody = originalRequestBody;
-      }
-    }
+    const requestBody = await this.resolveRequestBody(httpRequest.body);
 
     // Fix #682 Do not touch original headers in httpRequest, which may be used for retry later
     // Simply do a shadow copy here
@@ -174,79 +160,143 @@ export class HttpClient {
       },
     };
 
+    this.applyRequestTimeout(options, settings);
+    this.applyCookieJar(options, settings);
+    await this.applyAuthorization(options);
+    this.applyCertificate(options, httpRequest.url, settings);
+    await this.applyProxy(options, httpRequest.url, settings);
+
+    return options;
+  }
+
+  private resolveResponseEncoding(contentType: string | undefined): string {
+    if (!contentType) {
+      return "utf8";
+    }
+
+    try {
+      return MimeUtility.parse(contentType).charset || "utf8";
+    } catch {
+      return "utf8";
+    }
+  }
+
+  private async resolveRequestBody(
+    originalRequestBody: HttpRequest["body"],
+  ): Promise<string | Buffer | undefined> {
+    if (originalRequestBody === undefined) {
+      return undefined;
+    }
+
+    if (typeof originalRequestBody === "string") {
+      return originalRequestBody;
+    }
+
+    return convertStreamToBuffer(originalRequestBody);
+  }
+
+  private applyRequestTimeout(
+    options: OptionsOfBufferResponseBody,
+    settings: IOneRequestSettings,
+  ): void {
     if (settings.timeoutInMilliseconds > 0) {
       options.timeout = { request: settings.timeoutInMilliseconds };
     }
+  }
 
+  private applyCookieJar(
+    options: OptionsOfBufferResponseBody,
+    settings: IOneRequestSettings,
+  ): void {
     if (settings.rememberCookiesForSubsequentRequests) {
       options.cookieJar = new CookieJar(this.cookieStore);
     }
+  }
 
-    // TODO: refactor auth
-    const authorization = getHeader(options.headers!, "Authorization") as
+  private async applyAuthorization(
+    options: OptionsOfBufferResponseBody,
+  ): Promise<void> {
+    const headers = options.headers as Headers;
+    const authorization = getHeader(headers, "Authorization") as
       | string
       | undefined;
-    if (authorization) {
-      const [scheme, user, ...args] = authorization.split(/\s+/);
-      const normalizedScheme = scheme.toLowerCase();
-      if (args.length > 0) {
-        const pass = args.join(" ");
-        if (normalizedScheme === "basic") {
-          removeHeader(options.headers!, "Authorization");
-          options.username = user;
-          options.password = pass;
-        } else if (normalizedScheme === "digest") {
-          removeHeader(options.headers!, "Authorization");
-          options.hooks!.afterResponse!.push(digest(user, pass));
-        } else if (normalizedScheme === "aws") {
-          removeHeader(options.headers!, "Authorization");
-          options.hooks!.beforeRequest!.push(awsSignature(authorization));
-        } else if (normalizedScheme === "cognito") {
-          removeHeader(options.headers!, "Authorization");
-          options.hooks!.beforeRequest!.push(await awsCognito(authorization));
-        }
-      } else if (normalizedScheme === "basic" && user.includes(":")) {
-        removeHeader(options.headers!, "Authorization");
-        const [username, password] = user.split(":");
-        options.username = username;
-        options.password = password;
-      }
+    if (!authorization) {
+      return;
     }
 
-    // set certificate
-    const certificate = this.getRequestCertificate(httpRequest.url, settings);
+    const [scheme = "", user = "", ...args] = authorization.split(/\s+/);
+    const normalizedScheme = scheme.toLowerCase();
+    if (args.length > 0) {
+      const pass = args.join(" ");
+      if (normalizedScheme === "basic") {
+        removeHeader(headers, "Authorization");
+        options.username = user;
+        options.password = pass;
+      } else if (normalizedScheme === "digest") {
+        removeHeader(headers, "Authorization");
+        options.hooks!.afterResponse!.push(digest(user, pass));
+      } else if (normalizedScheme === "aws") {
+        removeHeader(headers, "Authorization");
+        options.hooks!.beforeRequest!.push(awsSignature(authorization));
+      } else if (normalizedScheme === "cognito") {
+        removeHeader(headers, "Authorization");
+        options.hooks!.beforeRequest!.push(await awsCognito(authorization));
+      }
+      return;
+    }
+
+    if (normalizedScheme === "basic" && user.includes(":")) {
+      removeHeader(headers, "Authorization");
+      const [username, password] = user.split(":");
+      options.username = username;
+      options.password = password;
+    }
+  }
+
+  private applyCertificate(
+    options: OptionsOfBufferResponseBody,
+    requestUrl: string,
+    settings: IOneRequestSettings,
+  ): void {
+    const certificate = this.getRequestCertificate(requestUrl, settings);
     Object.assign(options, certificate);
+  }
 
-    // set proxy
+  private async applyProxy(
+    options: OptionsOfBufferResponseBody,
+    requestUrl: string,
+    settings: IOneRequestSettings,
+  ): Promise<void> {
     if (
-      settings.proxy &&
-      !HttpClient.ignoreProxy(httpRequest.url, settings.excludeHostsForProxy)
+      !settings.proxy ||
+      HttpClient.ignoreProxy(requestUrl, settings.excludeHostsForProxy)
     ) {
-      const proxyEndpoint = new URL(settings.proxy);
-      if (/^https?:$/.test(proxyEndpoint.protocol)) {
-        const proxyOptions = {
-          host: proxyEndpoint.hostname,
-          port:
-            Number(proxyEndpoint.port) ||
-            (proxyEndpoint.protocol === "https:" ? 443 : 80),
-          rejectUnauthorized: settings.proxyStrictSSL,
-        };
-
-        const HttpProxyAgent = (await import("http-proxy-agent"))
-          .HttpProxyAgent;
-        const HttpsProxyAgent = (await import("https-proxy-agent"))
-          .HttpsProxyAgent;
-
-        const proxyUrl = `${settings.proxyStrictSSL ? "https" : "http"}://${proxyOptions.host}:${proxyOptions.port}`;
-
-        options.agent = {
-          http: new HttpProxyAgent(proxyUrl),
-          https: new HttpsProxyAgent(proxyUrl),
-        } as NonNullable<OptionsOfBufferResponseBody["agent"]>;
-      }
+      return;
     }
 
-    return options;
+    const proxyEndpoint = new URL(settings.proxy);
+    if (!/^https?:$/.test(proxyEndpoint.protocol)) {
+      return;
+    }
+
+    const proxyOptions = {
+      host: proxyEndpoint.hostname,
+      port:
+        Number(proxyEndpoint.port) ||
+        (proxyEndpoint.protocol === "https:" ? 443 : 80),
+      rejectUnauthorized: settings.proxyStrictSSL,
+    };
+
+    const HttpProxyAgent = (await import("http-proxy-agent")).HttpProxyAgent;
+    const HttpsProxyAgent = (await import("https-proxy-agent"))
+      .HttpsProxyAgent;
+
+    const proxyUrl = `${settings.proxyStrictSSL ? "https" : "http"}://${proxyOptions.host}:${proxyOptions.port}`;
+
+    options.agent = {
+      http: new HttpProxyAgent(proxyUrl),
+      https: new HttpsProxyAgent(proxyUrl),
+    } as NonNullable<OptionsOfBufferResponseBody["agent"]>;
   }
 
   private decodeEscapedUnicodeCharacters(body: string): string {
@@ -276,7 +326,7 @@ export class HttpClient {
 
   private getRequestCertificate(
     requestUrl: string,
-    settings: IRestClientSettings,
+    settings: IOneRequestSettings,
   ): Certificate | null {
     let host: string | undefined;
     try {
@@ -347,48 +397,45 @@ export class HttpClient {
     }
 
     if (path.isAbsolute(absoluteOrRelativePath)) {
-      if (!fs.existsSync(absoluteOrRelativePath)) {
-        window.showWarningMessage(
-          `Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`,
-        );
-        return undefined;
-      } else {
-        return fs.readFileSync(absoluteOrRelativePath);
-      }
+      return this.readCertificateFile(absoluteOrRelativePath, absoluteOrRelativePath);
     }
 
     // the path should be relative path
+    const relativePath = absoluteOrRelativePath;
     const rootPath = getWorkspaceRootPath();
-    let absolutePath = "";
     if (rootPath) {
-      absolutePath = path.join(rootPath, absoluteOrRelativePath);
-      if (fs.existsSync(absolutePath)) {
-        return fs.readFileSync(absolutePath);
-      } else {
-        window.showWarningMessage(
-          `Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`,
-        );
-        return undefined;
+      const workspaceAbsolutePath = path.join(rootPath, relativePath);
+      if (fs.existsSync(workspaceAbsolutePath)) {
+        return fs.readFileSync(workspaceAbsolutePath);
       }
     }
 
     const currentFilePath = getCurrentHttpFilePath();
-    if (!currentFilePath) {
-      return undefined;
+    if (currentFilePath) {
+      const fileAbsolutePath = path.join(path.dirname(currentFilePath), relativePath);
+      if (fs.existsSync(fileAbsolutePath)) {
+        return fs.readFileSync(fileAbsolutePath);
+      }
     }
 
-    absolutePath = path.join(
-      path.dirname(currentFilePath),
-      absoluteOrRelativePath,
+    window.showWarningMessage(
+      `Certificate path ${relativePath} doesn't exist, please make sure it exists.`,
     );
+    return undefined;
+  }
+
+  private readCertificateFile(
+    absolutePath: string,
+    displayPath: string,
+  ): Buffer | undefined {
     if (fs.existsSync(absolutePath)) {
       return fs.readFileSync(absolutePath);
-    } else {
-      window.showWarningMessage(
-        `Certificate path ${absoluteOrRelativePath} doesn't exist, please make sure it exists.`,
-      );
-      return undefined;
     }
+
+    window.showWarningMessage(
+      `Certificate path ${displayPath} doesn't exist, please make sure it exists.`,
+    );
+    return undefined;
   }
 
   private static normalizeHeaderNames<

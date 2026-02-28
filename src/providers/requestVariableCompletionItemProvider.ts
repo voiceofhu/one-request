@@ -1,6 +1,7 @@
 import { CancellationToken, CompletionItem, CompletionItemKind, CompletionItemProvider, MarkdownString, Position, TextDocument } from 'vscode';
 import * as Constants from "../common/constants";
 import { ElementType } from "../models/httpElement";
+import { RequestHeaders } from '../models/base';
 import { HttpResponse } from '../models/httpResponse';
 import { ResolveState, ResolveWarningMessage } from "../models/httpVariableResolveResult";
 import { RequestVariableProvider } from '../utils/httpVariableProviders/requestVariableProvider';
@@ -43,12 +44,17 @@ export class RequestVariableCompletionItemProvider implements CompletionItemProv
                 fullPath = fullPath.replace(/\.$/, '');
 
                 const result = RequestVariableCacheValueProcessor.resolveRequestVariable(value as HttpResponse | undefined, fullPath);
-                if (result.state === ResolveState.Warning && result.message === ResolveWarningMessage.MissingHeaderName) {
-                    const {value} = result;
-                    return Object.keys(value).map(p => {
+                if (result.state === ResolveState.Warning &&
+                    result.message === ResolveWarningMessage.MissingHeaderName &&
+                    result.value &&
+                    typeof result.value === 'object') {
+                    const headers = result.value as RequestHeaders;
+                    return Object.keys(headers).map(p => {
+                        const headerValue = headers[p];
+                        const detail = Array.isArray(headerValue) ? headerValue.join(', ') : `${headerValue ?? ''}`;
                         const item = new CompletionItem(p);
                         item.detail = `HTTP ${ElementType[ElementType.RequestCustomVariable]}`;
-                        item.documentation = new MarkdownString(`Value: \`${value[p]}\``);
+                        item.documentation = new MarkdownString(`Value: \`${detail}\``);
                         item.insertText = p;
                         item.kind = CompletionItemKind.Field;
                         return item;

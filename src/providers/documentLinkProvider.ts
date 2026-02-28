@@ -46,6 +46,6 @@ export class RequestBodyDocumentLinkProvider implements DocumentLinkProvider {
             }
         }
 
-        return Uri.parse(`command:rest-client._openDocumentLink?${encodeURIComponent(JSON.stringify({ path: Uri.file(resourcePath).toString() }))}`);
+        return Uri.parse(`command:one-request._openDocumentLink?${encodeURIComponent(JSON.stringify({ path: Uri.file(resourcePath).toString() }))}`);
     }
 }

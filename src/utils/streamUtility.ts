@@ -6,8 +6,9 @@ export async function convertStreamToBuffer(stream: Stream): Promise<Buffer> {
         stream.on('data', buffer => buffers.push(typeof buffer === 'string' ? Buffer.from(buffer) : buffer));
         stream.on('end', () => resolve(Buffer.concat(buffers)));
         stream.on('error', error => reject(error));
-        if (typeof (stream as NodeJS.ReadableStream).resume === 'function') {
-            (stream as NodeJS.ReadableStream).resume();
+        const readableStream = stream as Stream & { resume?: () => void };
+        if (typeof readableStream.resume === 'function') {
+            readableStream.resume();
         }
     });
 }

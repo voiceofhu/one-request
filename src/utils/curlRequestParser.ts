@@ -1,7 +1,7 @@
 import * as fs from "fs-extra";
 import yargsParser from "yargs-parser";
 import { RequestHeaders } from "../models/base";
-import { IRestClientSettings } from "../models/configurationSettings";
+import { IOneRequestSettings } from "../models/configurationSettings";
 import { HttpRequest } from "../models/httpRequest";
 import { RequestParser } from "../models/requestParser";
 import { base64, hasHeader } from "./misc";
@@ -15,7 +15,7 @@ const DefaultContentType: string = "application/x-www-form-urlencoded";
 export class CurlRequestParser implements RequestParser {
   public constructor(
     private readonly requestRawText: string,
-    private readonly settings: IRestClientSettings,
+    private readonly settings: IOneRequestSettings,
   ) {}
 
   public async parseHttpRequest(name?: string): Promise<HttpRequest> {

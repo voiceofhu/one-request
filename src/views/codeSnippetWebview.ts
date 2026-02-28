@@ -22,7 +22,7 @@ export class CodeSnippetWebview extends BaseWebview {
     public constructor(context: ExtensionContext) {
         super(context);
 
-        this.context.subscriptions.push(commands.registerCommand('rest-client.copy-codesnippet', this.copy, this));
+        this.context.subscriptions.push(commands.registerCommand('one-request.copy-codesnippet', this.copy, this));
     }
 
     public async render(convertResult: string, title: string, lang: string) {
@@ -34,6 +34,7 @@ export class CodeSnippetWebview extends BaseWebview {
                 ViewColumn.Two,
                 {
                     enableFindWidget: true,
+                    enableScripts: true,
                     retainContextWhenHidden: true
                 });
 
@@ -87,13 +88,20 @@ export class CodeSnippetWebview extends BaseWebview {
             <body>
                 <div>
                     <pre><code>${codeHighlightLinenums(convertResult, { hljs, lang: this.getHighlightJsLanguageAlias(lang), start: 1 })}</code></pre>
-                    <a id="scroll-to-top" role="button" aria-label="scroll to top"><span class="icon"></span></a>
+                    <a id="scroll-to-top" role="button" tabindex="0" aria-label="scroll to top" title="Scroll To Top"><span class="icon"></span></a>
                 </div>
                 <script nonce="${nonce}">
                     document.addEventListener('DOMContentLoaded', function () {
                         const button = document.getElementById('scroll-to-top');
                         if (button) {
-                            button.addEventListener('click', function () { window.scrollTo(0, 0); });
+                            const scrollToTop = function () { window.scrollTo(0, 0); };
+                            button.addEventListener('click', scrollToTop);
+                            button.addEventListener('keydown', function (event) {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    scrollToTop();
+                                }
+                            });
                         }
                     });
                 </script>

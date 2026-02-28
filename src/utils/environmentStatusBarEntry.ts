@@ -10,7 +10,7 @@ export class EnvironmentStatusEntry {
       StatusBarAlignment.Right,
       100,
     );
-    this.environmentEntry.command = "rest-client.switch-environment";
+    this.environmentEntry.command = "one-request.switch-environment";
     this.environmentEntry.text = environment;
     this.environmentEntry.tooltip = "Switch One Request Environment";
     this.environmentEntry.name = "One Request Environment";

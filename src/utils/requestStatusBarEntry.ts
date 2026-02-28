@@ -63,7 +63,7 @@ export class RequestStatusEntry {
         this.showDurationEntry(
           "$(sync~spin) Waiting...",
           "Click to cancel",
-          "rest-client.cancel-request",
+          "one-request.cancel-request",
         );
         break;
 

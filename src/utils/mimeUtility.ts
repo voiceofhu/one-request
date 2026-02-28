@@ -16,13 +16,13 @@ class MimeType {
 }
 
 export class MimeUtility {
-    private static readonly supportedImagesFormats = [
+    private static readonly supportedImageFormats = new Set<string>([
         'image/jpeg',
         'image/gif',
         'image/webp',
         'image/png',
         'image/bmp'
-    ];
+    ]);
 
     public static parse(contentTypeString: string) {
         // application/json; charset=utf-8
@@ -34,11 +34,12 @@ export class MimeUtility {
     }
 
     public static getExtension(contentTypeString: string | undefined, mimeAndFileExtensionMapping: { [key: string]: string }): string {
-        if (!contentTypeString) {
+        const mimeType = this.getParsedMimeType(contentTypeString);
+        if (!mimeType) {
             return '';
         }
 
-        const { essence } = this.parse(contentTypeString);
+        const { essence } = mimeType;
 
         // Check if user has custom mapping for this content type first
         if (essence in mimeAndFileExtensionMapping) {
@@ -51,86 +52,73 @@ export class MimeUtility {
     public static isBrowserSupportedImageFormat(contentTypeString: string | undefined): boolean {
         // https://en.wikipedia.org/wiki/Comparison_of_web_browsers#Image_format_support
         // For chrome supports JPEG, GIF, WebP, PNG and BMP
-        if (!contentTypeString) {
-            return false;
-        }
-
-        const { essence } = this.parse(contentTypeString);
-        return this.supportedImagesFormats.includes(essence);
+        const mimeType = this.getParsedMimeType(contentTypeString);
+        return !!mimeType && this.supportedImageFormats.has(mimeType.essence);
     }
 
     public static isJSON(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
+        const mimeType = this.getParsedMimeType(contentTypeString);
+        if (!mimeType) {
             return false;
         }
 
-        const { subtype, essence } = this.parse(contentTypeString);
+        const { subtype, essence } = mimeType;
         return essence === 'application/json' || essence === 'text/json' || subtype.endsWith('+json') || subtype.startsWith('x-amz-json');
     }
 
     public static isXml(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
+        const mimeType = this.getParsedMimeType(contentTypeString);
+        if (!mimeType) {
             return false;
         }
 
-        const { subtype, essence } = this.parse(contentTypeString);
+        const { subtype, essence } = mimeType;
         return essence === 'application/xml' || essence === 'text/xml' || subtype.endsWith('+xml');
     }
 
     public static isHtml(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
-            return false;
-        }
-
-        return this.parse(contentTypeString).essence === 'text/html';
+        return this.isEssence(contentTypeString, 'text/html');
     }
 
     public static isJavaScript(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
+        const essence = this.getParsedMimeType(contentTypeString)?.essence;
+        if (!essence) {
             return false;
         }
 
-        const essence = this.parse(contentTypeString).essence;
         return essence === 'application/javascript' || essence === 'text/javascript';
     }
 
     public static isCSS(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
-            return false;
-        }
-
-        return this.parse(contentTypeString).essence === 'text/css';
+        return this.isEssence(contentTypeString, 'text/css');
     }
 
     public static isMultiPartMixed(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
-            return false;
-        }
-
-        return this.parse(contentTypeString).essence === 'multipart/mixed';
+        return this.isEssence(contentTypeString, 'multipart/mixed');
     }
 
     public static isMultiPartFormData(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
-            return false;
-        }
-
-        return this.parse(contentTypeString).essence === 'multipart/form-data';
+        return this.isEssence(contentTypeString, 'multipart/form-data');
     }
 
     public static isFormUrlEncoded(contentTypeString: string | undefined): boolean {
-        if (!contentTypeString) {
-            return false;
-        }
-
-        return this.parse(contentTypeString).essence === 'application/x-www-form-urlencoded';
+        return this.isEssence(contentTypeString, 'application/x-www-form-urlencoded');
     }
 
     public static isNewlineDelimitedJSON(contentTypeString: string | undefined): boolean {
+        return this.isEssence(contentTypeString, 'application/x-ndjson');
+    }
+
+    private static getParsedMimeType(contentTypeString: string | undefined): MimeType | undefined {
         if (!contentTypeString) {
-            return false;
+            return undefined;
         }
 
-        return this.parse(contentTypeString).essence === 'application/x-ndjson';
+        return this.parse(contentTypeString);
+    }
+
+    private static isEssence(contentTypeString: string | undefined, expectedEssence: string): boolean {
+        const mimeType = this.getParsedMimeType(contentTypeString);
+        return !!mimeType && mimeType.essence === expectedEssence;
     }
 }

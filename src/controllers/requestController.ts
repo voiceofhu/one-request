@@ -1,6 +1,6 @@
 import { ExtensionContext, Range, TextDocument, ViewColumn, window } from 'vscode';
 import Logger from '../logger';
-import { IRestClientSettings, RequestSettings, RestClientSettings } from '../models/configurationSettings';
+import { IOneRequestSettings, RequestSettings, OneRequestSettings } from '../models/configurationSettings';
 import { HistoricalHttpRequest, HttpRequest } from '../models/httpRequest';
 import { RequestMetadata } from '../models/requestMetadata';
 import { RequestParserFactory } from '../models/requestParserFactory';
@@ -19,7 +19,7 @@ export class RequestController {
     private _httpClient: HttpClient;
     private _webview: HttpResponseWebview;
     private _textDocumentView: HttpResponseTextDocumentView;
-    private _lastRequestSettingTuple: [HttpRequest, IRestClientSettings];
+    private _lastRequestSettingTuple: [HttpRequest, IOneRequestSettings];
     private _lastPendingRequest?: HttpRequest;
 
     public constructor(context: ExtensionContext) {
@@ -47,15 +47,13 @@ export class RequestController {
         const name = metadatas.get(RequestMetadata.Name);
 
         if (metadatas.has(RequestMetadata.Note)) {
-            const note = name ? `Are you sure you want to send the request "${name}"?` : 'Are you sure you want to send this request?';
-            const userConfirmed = await window.showWarningMessage(note, 'Yes', 'No');
-            if (userConfirmed !== 'Yes') {
+            if (!await this.confirmRequestSend(name)) {
                 return;
             }
         }
 
         const requestSettings = new RequestSettings(metadatas);
-        const settings: IRestClientSettings = new RestClientSettings(requestSettings);
+        const settings: IOneRequestSettings = new OneRequestSettings(requestSettings);
 
         // parse http request
         const httpRequest = await RequestParserFactory.createRequestParser(text, settings).parseHttpRequest(name);
@@ -70,8 +68,6 @@ export class RequestController {
         }
 
         const [request, settings] = this._lastRequestSettingTuple;
-
-        // TODO: recover from last request settings
         await this.runCore(request, settings);
     }
 
@@ -89,7 +85,9 @@ export class RequestController {
         }
     }
 
-    private async runCore(httpRequest: HttpRequest, settings: IRestClientSettings, document?: TextDocument) {
+    private async runCore(httpRequest: HttpRequest, settings: IOneRequestSettings, document?: TextDocument) {
+        httpRequest.isCancelled = false;
+
         // clear status bar
         this._requestStatusEntry.update({ state: RequestState.Pending });
 
@@ -112,20 +110,7 @@ export class RequestController {
                 RequestVariableCache.add(document, httpRequest.name, response);
             }
 
-            try {
-                const activeColumn = window.activeTextEditor!.viewColumn;
-                const previewColumn = settings.previewColumn === ViewColumn.Active
-                    ? activeColumn
-                    : ((activeColumn as number) + 1) as ViewColumn;
-                if (settings.previewResponseInUntitledDocument) {
-                    this._textDocumentView.render(response, previewColumn);
-                } else if (previewColumn) {
-                    this._webview.render(response, previewColumn);
-                }
-            } catch (reason) {
-                Logger.error('Unable to preview response:', reason);
-                window.showErrorMessage(reason);
-            }
+            await this.previewResponse(response, settings);
 
             // persist to history json file
             await UserDataManager.addToRequestHistory(HistoricalHttpRequest.convertFromHttpRequest(httpRequest));
@@ -135,21 +120,54 @@ export class RequestController {
                 return;
             }
 
-            if (error.code === 'ETIMEDOUT') {
-                error.message = `Request timed out. Double-check your network connection and/or raise the timeout duration (currently set to ${settings.timeoutInMilliseconds}ms) as needed: 'rest-client.timeoutinmilliseconds'. Details: ${error}.`;
-            } else if (error.code === 'ECONNREFUSED') {
-                error.message = `The connection was rejected. Either the requested service isn’t running on the requested server/port, the proxy settings in vscode are misconfigured, or a firewall is blocking requests. Details: ${error}.`;
-            } else if (error.code === 'ENETUNREACH') {
-                error.message = `You don't seem to be connected to a network. Details: ${error}`;
-            }
+            const requestError = this.normalizeRequestError(error, settings);
             this._requestStatusEntry.update({ state: RequestState.Error });
-            Logger.error('Failed to send request:', error);
-            window.showErrorMessage(error.message);
+            Logger.error('Failed to send request:', requestError);
+            window.showErrorMessage(requestError.message);
         } finally {
             if (this._lastPendingRequest === httpRequest) {
                 this._lastPendingRequest = undefined;
             }
         }
+    }
+
+    private async confirmRequestSend(name?: string): Promise<boolean> {
+        const note = name ? `Are you sure you want to send the request "${name}"?` : 'Are you sure you want to send this request?';
+        const userConfirmed = await window.showWarningMessage(note, 'Yes', 'No');
+        return userConfirmed === 'Yes';
+    }
+
+    private async previewResponse(response: Awaited<ReturnType<HttpClient['send']>>, settings: IOneRequestSettings): Promise<void> {
+        try {
+            const activeColumn = window.activeTextEditor?.viewColumn ?? ViewColumn.One;
+            const previewColumn = settings.previewColumn === ViewColumn.Active
+                ? activeColumn
+                : ((activeColumn as number) + 1) as ViewColumn;
+            if (settings.previewResponseInUntitledDocument) {
+                await this._textDocumentView.render(response, previewColumn);
+            } else {
+                await this._webview.render(response, previewColumn);
+            }
+        } catch (reason) {
+            Logger.error('Unable to preview response:', reason);
+            window.showErrorMessage(`${reason}`);
+        }
+    }
+
+    private normalizeRequestError(error: unknown, settings: IOneRequestSettings): Error {
+        const requestError = error as { code?: string; message?: string; toString?: () => string };
+        const details = requestError.toString?.() ?? `${error}`;
+        let message = requestError.message ?? details;
+
+        if (requestError.code === 'ETIMEDOUT') {
+            message = `Request timed out. Double-check your network connection and/or raise the timeout duration (currently set to ${settings.timeoutInMilliseconds}ms) as needed: 'one-request.timeoutinmilliseconds'. Details: ${details}.`;
+        } else if (requestError.code === 'ECONNREFUSED') {
+            message = `The connection was rejected. Either the requested service isn’t running on the requested server/port, the proxy settings in vscode are misconfigured, or a firewall is blocking requests. Details: ${details}.`;
+        } else if (requestError.code === 'ENETUNREACH') {
+            message = `You don't seem to be connected to a network. Details: ${details}`;
+        }
+
+        return Object.assign(new Error(message), requestError);
     }
 
     public dispose() {

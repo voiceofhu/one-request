@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": ".test-dist",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "sourceMap": false,
+    "incremental": false,
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "tests/**/*.ts",
+    "src/models/base.ts",
+    "src/models/httpRequest.ts",
+    "src/models/httpResponse.ts",
+    "src/models/httpVariableResolveResult.ts",
+    "src/utils/mimeUtility.ts",
+    "src/utils/misc.ts",
+    "src/utils/requestVariableCacheValueProcessor.ts",
+    "src/utils/swaggerUtils.ts"
+  ]
+}

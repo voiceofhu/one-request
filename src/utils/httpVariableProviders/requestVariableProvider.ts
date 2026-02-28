@@ -5,7 +5,7 @@ import { ResolveErrorMessage, ResolveResult, ResolveState, ResolveWarningMessage
 import { VariableType } from '../../models/variableType';
 import { RequestVariableCache } from '../requestVariableCache';
 import { RequestVariableCacheValueProcessor } from '../requestVariableCacheValueProcessor';
-import { HttpVariable, HttpVariableProvider } from './httpVariableProvider';
+import { HttpVariable, HttpVariableProvider, HttpVariableValue } from './httpVariableProvider';
 
 export class RequestVariableProvider implements HttpVariableProvider {
     private static _instance: RequestVariableProvider;
@@ -73,11 +73,25 @@ export class RequestVariableProvider implements HttpVariableProvider {
 
     private convertToHttpVariable(name: string, result: ResolveResult): HttpVariable {
         if (result.state === ResolveState.Success) {
-            return { name, value: result.value };
+            const value = this.toHttpVariableValue(result.value);
+            return { name, value };
         } else if (result.state === ResolveState.Warning) {
-            return { name, value: result.value, warning: result.message };
+            const value = this.toHttpVariableValue(result.value);
+            return { name, value, warning: result.message };
         } else {
             return { name, error: result.message };
         }
+    }
+
+    private toHttpVariableValue(value: unknown): HttpVariableValue | undefined {
+        if (value === undefined) {
+            return undefined;
+        }
+
+        if (typeof value === 'string' || typeof value === 'object') {
+            return value as HttpVariableValue;
+        }
+
+        return undefined;
     }
 }
