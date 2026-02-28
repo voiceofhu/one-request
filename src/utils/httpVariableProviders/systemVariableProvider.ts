@@ -486,12 +486,12 @@ export class SystemVariableProvider implements HttpVariableProvider {
 
   private _acquireToken(
     resolve: (
-      value?: adal.TokenResponse | PromiseLike<adal.TokenResponse>,
+      value?: AadTokenResponse | PromiseLike<AadTokenResponse>,
       cache?: boolean,
       copy?: boolean,
     ) => void,
     reject: (reason?: unknown) => void,
-    authContext: adal.AuthenticationContext,
+    endpoint: string,
     cloud: string,
     tenantId: string,
     targetApp: string,
@@ -504,16 +504,8 @@ export class SystemVariableProvider implements HttpVariableProvider {
         messageBoxOptions,
       );
     };
-    authContext.acquireUserCode(
-      targetApp,
-      clientId,
-      "en-US",
-      (codeError: Error, codeResponse: adal.UserCodeInfo) => {
-        if (codeError) {
-          signInFailed("acquireUserCode", codeError.message);
-          return reject(codeError);
-        }
-
+    this._requestUserCode(endpoint, tenantId, targetApp, clientId)
+      .then((codeResponse) => {
         const prompt1 = `Sign in to Azure AD with the following code (will be copied to the clipboard) to add a token to your request.\r\n\r\nCode: ${codeResponse.userCode}`;
         const prompt2 = `1. Azure AD verification page opened in default browser (you may need to switch apps)\r\n2. Paste code to sign in and authorize VS Code (already copied to the clipboard)\r\n3. Confirm when done\r\n4. Token will be copied to the clipboard when finished\r\n\r\nCode: ${codeResponse.userCode}`;
         const signIn = "Sign in";
@@ -536,30 +528,24 @@ export class SystemVariableProvider implements HttpVariableProvider {
                 .then(signInPrompt);
             });
           } else if (value === done) {
-            authContext.acquireTokenWithDeviceCode(
+            this._requestTokenWithDeviceCode(
+              endpoint,
+              tenantId,
               targetApp,
               clientId,
               codeResponse,
-              (tokenError: Error, tokenResponse: adal.TokenResponse) => {
-                if (tokenError) {
-                  signInFailed(
-                    "acquireTokenWithDeviceCode",
-                    tokenError.message,
-                  );
-                  return reject(tokenError);
-                }
-
+            )
+              .then(async (tokenResponse) => {
                 // if no directory chosen, pick one (otherwise, the token is likely useless :P)
-                if (
-                  tenantId === Constants.AzureActiveDirectoryDefaultTenantId
-                ) {
-                  const client = new HttpClient();
-                  const request = new HttpRequest(
-                    "GET",
-                    `${Constants.AzureClouds[cloud].arm}/tenants?api-version=2017-08-01`,
-                    { Authorization: this._getTokenString(tokenResponse) },
-                  );
-                  return client.send(request).then(async (value) => {
+                if (tenantId === Constants.AzureActiveDirectoryDefaultTenantId) {
+                  try {
+                    const client = new HttpClient();
+                    const request = new HttpRequest(
+                      "GET",
+                      `${Constants.AzureClouds[cloud].arm}/tenants?api-version=2017-08-01`,
+                      { Authorization: this._getTokenString(tokenResponse) },
+                    );
+                    const value = await client.send(request);
                     const items = JSON.parse(value.body).value;
                     const directories: QuickPickItem[] = [];
                     items.forEach((element) => {
@@ -654,48 +640,220 @@ export class SystemVariableProvider implements HttpVariableProvider {
                     }
 
                     // if directory selected, sign in to that directory; otherwise, stick with the default
-                    if (result) {
-                      const newDirAuthContext = new adal.AuthenticationContext(
-                        `${Constants.AzureClouds[cloud].aad}${result.description}`,
-                      );
-                      newDirAuthContext.acquireTokenWithRefreshToken(
-                        tokenResponse.refreshToken!,
-                        clientId,
-                        null!,
-                        (
-                          newDirError: Error,
-                          newDirResponse: adal.TokenResponse,
-                        ) => {
-                          // cache/copy new directory token, if successful
-                          resolve(
-                            newDirError ? tokenResponse : newDirResponse,
-                            true,
-                            true,
-                          );
-                        },
-                      );
-                    } else {
-                      return resolve(tokenResponse, true, true);
+                    if (
+                      result?.description &&
+                      tokenResponse.refreshToken
+                    ) {
+                      const newDirResponse =
+                        await this._refreshTokenWithRefreshToken(
+                          endpoint,
+                          result.description,
+                          tokenResponse.refreshToken,
+                          clientId,
+                          targetApp,
+                        );
+                      return resolve(newDirResponse, true, true);
                     }
-                  });
+                  } catch {}
                 }
 
                 // explicitly copy this token since we've informed the user in the dialog
                 return resolve(tokenResponse, true, true);
-              },
-            );
+              })
+              .catch((tokenError: Error) => {
+                signInFailed("acquireTokenWithDeviceCode", tokenError.message);
+                reject(tokenError);
+              });
           }
         };
         window
           .showInformationMessage(prompt1, messageBoxOptions, signIn)
           .then(signInPrompt);
-      },
-    );
+      })
+      .catch((codeError: Error) => {
+        signInFailed("acquireUserCode", codeError.message);
+        reject(codeError);
+      });
   }
 
-  private _getTokenString(token: adal.TokenResponse) {
+  private async _requestUserCode(
+    endpoint: string,
+    tenantId: string,
+    targetApp: string,
+    clientId: string,
+  ): Promise<AadUserCodeResponse> {
+    const request = new HttpRequest(
+      "POST",
+      `${endpoint}${tenantId}/oauth2/devicecode`,
+      { "Content-Type": "application/x-www-form-urlencoded" },
+      `resource=${encodeURIComponent(targetApp)}&client_id=${encodeURIComponent(clientId)}`,
+    );
+    const response = await new HttpClient().send(request);
+    const body = JSON.parse(response.body) as AadDeviceCodeEndpointResponse;
+    if (response.statusCode !== 200 || body.error) {
+      throw new Error(body.error_description || body.error || "Failed to acquire user code");
+    }
+
+    const userCode = body.user_code;
+    const deviceCode = body.device_code;
+    const verificationUrl = body.verification_url || body.verification_uri;
+    if (!userCode || !deviceCode || !verificationUrl) {
+      throw new Error("AAD device code response is missing required fields");
+    }
+    return {
+      userCode,
+      deviceCode,
+      verificationUrl,
+      intervalSeconds: Number(body.interval) || 5,
+      expiresInSeconds: Number(body.expires_in) || 900,
+    };
+  }
+
+  private async _requestTokenWithDeviceCode(
+    endpoint: string,
+    tenantId: string,
+    targetApp: string,
+    clientId: string,
+    codeResponse: AadUserCodeResponse,
+  ): Promise<AadTokenResponse> {
+    const tokenEndpoint = `${endpoint}${tenantId}/oauth2/token`;
+    const expiresAt = Date.now() + codeResponse.expiresInSeconds * 1000;
+    const intervalMs = Math.max(codeResponse.intervalSeconds, 1) * 1000;
+    while (Date.now() < expiresAt) {
+      const request = new HttpRequest(
+        "POST",
+        tokenEndpoint,
+        { "Content-Type": "application/x-www-form-urlencoded" },
+        `grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=${encodeURIComponent(clientId)}&code=${encodeURIComponent(codeResponse.deviceCode)}&resource=${encodeURIComponent(targetApp)}`,
+      );
+      const response = await new HttpClient().send(request);
+      const body = JSON.parse(response.body) as AadTokenEndpointResponse;
+      if (response.statusCode === 200 && !body.error) {
+        return this._toAadTokenResponse(body, tenantId);
+      }
+
+      if (
+        body.error === "authorization_pending" ||
+        body.error === "slow_down"
+      ) {
+        await this._sleep(intervalMs);
+        continue;
+      }
+
+      throw new Error(
+        body.error_description || body.error || "Failed to acquire token",
+      );
+    }
+
+    throw new Error("Timed out waiting for user authentication");
+  }
+
+  private async _refreshTokenWithRefreshToken(
+    endpoint: string,
+    tenantId: string,
+    refreshToken: string,
+    clientId: string,
+    targetApp: string,
+  ): Promise<AadTokenResponse> {
+    const request = new HttpRequest(
+      "POST",
+      `${endpoint}${tenantId}/oauth2/token`,
+      { "Content-Type": "application/x-www-form-urlencoded" },
+      `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}&client_id=${encodeURIComponent(clientId)}&resource=${encodeURIComponent(targetApp)}`,
+    );
+    const response = await new HttpClient().send(request);
+    const body = JSON.parse(response.body) as AadTokenEndpointResponse;
+    if (response.statusCode !== 200 || body.error) {
+      throw new Error(
+        body.error_description || body.error || "Failed to refresh token",
+      );
+    }
+
+    return this._toAadTokenResponse(body, tenantId);
+  }
+
+  private _toAadTokenResponse(
+    response: AadTokenEndpointResponse,
+    fallbackTenantId: string,
+  ): AadTokenResponse {
+    if (!response.access_token || !response.token_type) {
+      throw new Error("Invalid AAD token response");
+    }
+    const now = Date.now();
+    const expiresInSec = Number(response.expires_in) || 3600;
+    const numericExpiresOn = Number(response.expires_on);
+    const expiresOn =
+      Number.isFinite(numericExpiresOn) && numericExpiresOn > 0
+        ? new Date(numericExpiresOn * 1000)
+        : new Date(now + expiresInSec * 1000);
+
+    return {
+      accessToken: response.access_token,
+      tokenType: response.token_type,
+      refreshToken: response.refresh_token,
+      tenantId:
+        this._getTenantIdFromAccessToken(response.access_token) ||
+        fallbackTenantId,
+      expiresOn,
+    };
+  }
+
+  private _getTenantIdFromAccessToken(accessToken: string): string | undefined {
+    try {
+      const [, payloadSegment] = accessToken.split(".");
+      if (!payloadSegment) {
+        return undefined;
+      }
+      const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = normalized.padEnd(
+        normalized.length + ((4 - (normalized.length % 4)) % 4),
+        "=",
+      );
+      const payload = JSON.parse(
+        Buffer.from(padded, "base64").toString("utf8"),
+      ) as { tid?: string };
+      return payload.tid;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private _sleep(delayMs: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  private _getTokenString(token: AadTokenResponse) {
     return token ? `${token.tokenType} ${token.accessToken}` : "";
   }
 
   // #endregion
 }
+
+type AadDeviceCodeEndpointResponse = {
+  user_code?: string;
+  device_code?: string;
+  verification_url?: string;
+  verification_uri?: string;
+  interval?: number | string;
+  expires_in?: number | string;
+  error?: string;
+  error_description?: string;
+};
+
+type AadTokenEndpointResponse = {
+  token_type?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number | string;
+  expires_on?: number | string;
+  error?: string;
+  error_description?: string;
+};
+
+type AadUserCodeResponse = {
+  userCode: string;
+  deviceCode: string;
+  verificationUrl: string;
+  intervalSeconds: number;
+  expiresInSeconds: number;
+};

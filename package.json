@@ -2,7 +2,7 @@
   "name": "one-request",
   "displayName": "One Request",
   "description": "One Request for Visual Studio Code",
-  "version": "0.26.0",
+  "version": "26.0228.1511",
   "publisher": "huzhihui",
   "author": {
     "name": "huzhihui",
@@ -15,13 +15,13 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/voiceofhu/one-request/issues",
+    "url": "https://github.com/huzhihui/one-request/issues",
     "email": "onerequest@huzhihui.com"
   },
-  "homepage": "https://github.com/voiceofhu/one-request/blob/master/README.md",
+  "homepage": "https://github.com/huzhihui/one-request/blob/master/README.md",
   "repository": {
     "type": "git",
-    "url": "https://github.com/voiceofhu/one-request.git"
+    "url": "https://github.com/huzhihui/one-request.git"
   },
   "engines": {
     "vscode": "^1.81.0"
@@ -709,22 +709,36 @@
     "vscode:prepublish": "vite build",
     "build": "vite build",
     "watch": "vite build --watch",
-    "tslint": "tslint --project tsconfig.json"
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "overrides": {
+      "fast-xml-parser": ">=5.3.8",
+      "form-data": ">=4.0.4"
+    }
   },
   "devDependencies": {
+    "@eslint/js": "^9",
     "@szmarczak/http-timer": "^5.0.1",
     "@types/aws4": "^1.5.1",
     "@types/fs-extra": "^5.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^18.0.0",
+    "@types/node": "^20.19.35",
     "@types/vscode": "^1.81.0",
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
+    "eslint": "^9",
+    "eslint-plugin-simple-import-sort": "^12",
     "js-yaml": "^4.1.1",
-    "tslint": "^6.1.2",
     "typescript": "^5.4.2",
-    "vite": "^5.4.21"
+    "vite": "^7.3.1"
   },
   "dependencies": {
-    "adal-node": "^0.2.4",
+    "@xmldom/xmldom": "^0.8.11",
     "ajv": "^8.18.0",
     "applicationinsights": "^3.14.0",
     "aws-amplify": "^6.16.2",
@@ -751,7 +765,6 @@
     "tough-cookie": "^6.0.0",
     "tough-cookie-file-store": "^3.3.0",
     "uuid": "^13.0.0",
-    "xmldom": "^0.6.0",
     "xpath": "^0.0.34",
     "yargs-parser": "^22.0.0"
   }

@@ -13,7 +13,8 @@ export class HttpDocumentSymbolProvider implements DocumentSymbolProvider {
             lines,
             { ignoreCommentLine: false , ignoreFileVariableDefinitionLine: false });
 
-        for (let [blockStart, blockEnd] of requestRange) {
+        for (const [requestStart, blockEnd] of requestRange) {
+            let blockStart = requestStart;
             // get real start for current requestRange
             let requestName: string | undefined;
             while (blockStart <= blockEnd) {

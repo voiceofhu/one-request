@@ -1,5 +1,5 @@
 import { JSONPath } from 'jsonpath-plus';
-import { DOMParser } from 'xmldom';
+import { DOMParser } from '@xmldom/xmldom';
 import * as xpath from 'xpath';
 import { HttpRequest } from "../models/httpRequest";
 import { HttpResponse } from '../models/httpResponse';

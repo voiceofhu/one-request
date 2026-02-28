@@ -4,24 +4,31 @@ on: [push, pull_request]
 
 jobs:
   lint:
-    name: Run tslint on node ${{ matrix.node-version }} and ${{ matrix.os }}
+    name: Run lint on node ${{ matrix.node-version }} and ${{ matrix.os }}
 
     runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
-        node-version: [18]
+        node-version: [20, 22]
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-    - name: npm install, prepublish, and lint
+        cache: pnpm
+    - name: Install dependencies
       run: |
-        npm install
-        npm run vscode:prepublish
-        npm run tslint
+        pnpm install --frozen-lockfile
+    - name: Build and lint
+      run: |
+        pnpm run build
+        pnpm run lint
