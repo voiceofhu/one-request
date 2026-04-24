@@ -39,6 +39,7 @@ export class CurlRequestParser implements RequestParser {
         parsedArguments.compressed ||
         parsedArguments.url;
     }
+    url = this.sanitizeUrl(url);
 
     // parse header
     let headers: RequestHeaders = {};
@@ -109,5 +110,15 @@ export class CurlRequestParser implements RequestParser {
 
   private static mergeMultipleSpacesIntoSingle(text: string): string {
     return text.replace(/\s{2,}/g, " ");
+  }
+
+  private sanitizeUrl(url: unknown): string {
+    const normalized = (url ?? "").toString().trim();
+    if (!normalized) {
+      return normalized;
+    }
+
+    const matched = normalized.match(/^(['"])(.*)\1$/);
+    return matched ? matched[2].trim() : normalized;
   }
 }

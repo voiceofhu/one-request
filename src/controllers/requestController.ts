@@ -168,6 +168,7 @@ export class RequestController {
         const requestError = error as { code?: string; message?: string; toString?: () => string };
         const details = requestError.toString?.() ?? `${error}`;
         let message = requestError.message ?? details;
+        const hasTlsHandshakeFailure = /BAD_DECRYPT|EPROTO|SSL routines|wrong version number|handshake failure/i.test(details);
 
         if (requestError.code === 'ETIMEDOUT') {
             message = `Request timed out. Double-check your network connection and/or raise the timeout duration (currently set to ${settings.timeoutInMilliseconds}ms) as needed: 'one-request.timeoutinmilliseconds'. Details: ${details}.`;
@@ -175,6 +176,10 @@ export class RequestController {
             message = `The connection was rejected. Either the requested service isn’t running on the requested server/port, the proxy settings in vscode are misconfigured, or a firewall is blocking requests. Details: ${details}.`;
         } else if (requestError.code === 'ENETUNREACH') {
             message = `You don't seem to be connected to a network. Details: ${details}`;
+        } else if (requestError.code === 'ERR_INVALID_URL' || /Invalid URL/i.test(message)) {
+            message = `The request URL is invalid after parsing. Check the URL line in your .http file and any variables used in it, especially unresolved placeholders or accidental extra text after the URL. Details: ${details}.`;
+        } else if (hasTlsHandshakeFailure) {
+            message = `TLS handshake failed while sending the request. If this only happens inside One Request, double-check VS Code proxy settings ('http.proxy', 'http.proxyStrictSSL') and any One Request certificate overrides. Details: ${details}.`;
         }
 
         return Object.assign(new Error(message), requestError);

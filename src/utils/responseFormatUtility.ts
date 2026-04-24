@@ -1,6 +1,5 @@
 import { createScanner, SyntaxKind } from 'jsonc-parser';
 import * as os from 'os';
-import { pd } from 'pretty-data';
 import { window } from 'vscode';
 import { MimeUtility } from './mimeUtility';
 import { isJSONString } from './misc';
@@ -28,9 +27,9 @@ export class ResponseFormatUtility {
                     window.showWarningMessage('The content type of response is application/json, while response body is not a valid json string');
                 }
             } else if (MimeUtility.isXml(contentType)) {
-                body = pd.xml(body);
+                body = this.xmlPrettify(body);
             } else if (MimeUtility.isCSS(contentType)) {
-                body = pd.css(body);
+                body = this.cssPrettify(body);
             } else {
                 // Add this for the case that the content type of response body is not very accurate #239
                 if (isJSONString(body)) {
@@ -124,5 +123,65 @@ export class ResponseFormatUtility {
         }
 
         return result;
+    }
+
+    private static xmlPrettify(text: string): string {
+        const compact = text.replace(/>\s*</g, '><').trim();
+        if (!compact) {
+            return text;
+        }
+
+        const tokens = compact.replace(/</g, '\n<').split('\n').filter(Boolean);
+        let depth = 0;
+        const lines: string[] = [];
+        for (const token of tokens) {
+            const trimmed = token.trim();
+            const isClosing = /^<\//.test(trimmed);
+            const isSelfClosing = /\/>$/.test(trimmed) || /^<\?/.test(trimmed) || /^<!/.test(trimmed);
+
+            if (isClosing) {
+                depth = Math.max(depth - 1, 0);
+            }
+
+            lines.push(`${'  '.repeat(depth)}${trimmed}`);
+
+            const isOpening = /^<[^!?/][^>]*>$/.test(trimmed) && !isSelfClosing && !isClosing;
+            if (isOpening) {
+                depth++;
+            }
+        }
+
+        return lines.join(os.EOL);
+    }
+
+    private static cssPrettify(text: string): string {
+        const compact = text.replace(/\s+/g, ' ').trim();
+        if (!compact) {
+            return text;
+        }
+
+        let depth = 0;
+        const parts = compact
+            .replace(/\{/g, '{\n')
+            .replace(/\}/g, '\n}\n')
+            .replace(/;/g, ';\n')
+            .split('\n')
+            .map(part => part.trim())
+            .filter(Boolean);
+
+        const lines: string[] = [];
+        for (const part of parts) {
+            if (part === '}') {
+                depth = Math.max(depth - 1, 0);
+            }
+
+            lines.push(`${'  '.repeat(depth)}${part}`);
+
+            if (part.endsWith('{')) {
+                depth++;
+            }
+        }
+
+        return lines.join(os.EOL);
     }
 }

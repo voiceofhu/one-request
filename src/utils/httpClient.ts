@@ -266,28 +266,33 @@ export class HttpClient {
       return;
     }
 
-    const proxyEndpoint = new URL(settings.proxy);
+    let proxyEndpoint: URL;
+    try {
+      proxyEndpoint = new URL(settings.proxy);
+    } catch {
+      // Ignore malformed proxy configuration and continue without proxy.
+      return;
+    }
     if (!/^https?:$/.test(proxyEndpoint.protocol)) {
       return;
     }
 
-    const proxyOptions = {
-      host: proxyEndpoint.hostname,
-      port:
-        Number(proxyEndpoint.port) ||
-        (proxyEndpoint.protocol === "https:" ? 443 : 80),
-      rejectUnauthorized: settings.proxyStrictSSL,
-    };
-
     const HttpProxyAgent = (await import("http-proxy-agent")).HttpProxyAgent;
     const HttpsProxyAgent = (await import("https-proxy-agent"))
       .HttpsProxyAgent;
-
-    const proxyUrl = `${settings.proxyStrictSSL ? "https" : "http"}://${proxyOptions.host}:${proxyOptions.port}`;
+    const proxyTlsOptions =
+      proxyEndpoint.protocol === "https:"
+        ? { rejectUnauthorized: settings.proxyStrictSSL }
+        : undefined;
 
     options.agent = {
-      http: new HttpProxyAgent(proxyUrl),
-      https: new HttpsProxyAgent(proxyUrl),
+      // Keep the original proxy URL so protocol/auth settings are preserved.
+      http: proxyTlsOptions
+        ? new HttpProxyAgent(settings.proxy, proxyTlsOptions)
+        : new HttpProxyAgent(settings.proxy),
+      https: proxyTlsOptions
+        ? new HttpsProxyAgent(settings.proxy, proxyTlsOptions)
+        : new HttpsProxyAgent(settings.proxy),
     } as NonNullable<OptionsOfBufferResponseBody["agent"]>;
   }
 
@@ -353,7 +358,10 @@ export class HttpClient {
       let timingPhases: Response<Buffer>["timings"]["phases"] = {};
       const chunks: Buffer[] = [];
 
-      const requestStream = got.default.stream(requestUrl, streamOptions);
+      const requestStream = got.default(requestUrl, {
+        ...streamOptions,
+        isStream: true,
+      } as typeof streamOptions & { isStream: true }) as unknown as NodeJS.ReadableStream;
       httpRequest.setUnderlyingRequest({
         cancel: () => requestStream.destroy(),
       });

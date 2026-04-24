@@ -1,5 +1,4 @@
 import encodeUrl from 'encodeurl';
-import { availableTargets, HTTPSnippet } from 'httpsnippet';
 import { EOL } from 'os';
 import { Clipboard, env, ExtensionContext, QuickInputButtons, window } from 'vscode';
 import Logger from '../logger';
@@ -15,14 +14,14 @@ import { getCurrentTextDocument } from '../utils/workspaceUtility';
 import { CodeSnippetWebview } from '../views/codeSnippetWebview';
 
 type CodeSnippetClient = {
-    key: NonNullable<Parameters<HTTPSnippet['convert']>[1]>;
+    key: string;
     title: string;
     link: string;
     description: string;
 };
 
 type CodeSnippetTarget = {
-    key: Parameters<HTTPSnippet['convert']>[0];
+    key: string;
     title: string;
     clients: CodeSnippetClient[];
 };
@@ -39,7 +38,8 @@ type ClientQuickPickItem = CodeSnippetClient & {
 type CodeSnippetQuickPickItem = TargetQuickPickItem | ClientQuickPickItem;
 
 export class CodeSnippetController {
-    private readonly _availableTargets: CodeSnippetTarget[] = availableTargets();
+    private _availableTargets?: CodeSnippetTarget[];
+    private _httpsnippetModule?: Promise<typeof import('httpsnippet')>;
     private readonly clipboard: Clipboard;
     private _webview: CodeSnippetWebview;
 
@@ -67,13 +67,15 @@ export class CodeSnippetController {
         // parse http request
         const httpRequest = await RequestParserFactory.createRequestParser(text, settings).parseHttpRequest();
 
+        const { HTTPSnippet } = await this.getHttpsnippetModule();
+        const availableTargets = await this.getAvailableTargets();
         const harHttpRequest = this.convertToHARHttpRequest(httpRequest);
         const snippet = new HTTPSnippet(this.ensureHarRequest(harHttpRequest));
 
         let target: CodeSnippetTarget | undefined;
 
         const quickPick = window.createQuickPick<CodeSnippetQuickPickItem>();
-        const targetQuickPickItems: TargetQuickPickItem[] = this._availableTargets.map(target => ({ label: target.title, ...target }));
+        const targetQuickPickItems: TargetQuickPickItem[] = availableTargets.map(target => ({ label: target.title, ...target }));
         quickPick.title = 'Generate Code Snippet';
         quickPick.step = 1;
         quickPick.totalSteps = 2;
@@ -115,7 +117,7 @@ export class CodeSnippetController {
                 const { key: ck, title: ct } = selectedItem;
                 const { key: tk, title: tt } = target;
                 Telemetry.sendEvent('Generate Code Snippet', { 'target': target.key, 'client': ck });
-                const result = this.normalizeSnippetResult(snippet.convert(tk, ck));
+                const result = this.normalizeSnippetResult(snippet.convert(tk as never, ck as never));
                 if (!result) {
                     window.showErrorMessage('Unable to generate code snippet for current target/client.');
                     return;
@@ -131,6 +133,33 @@ export class CodeSnippetController {
             }
         });
         quickPick.show();
+    }
+
+    private async getHttpsnippetModule() {
+        if (!this._httpsnippetModule) {
+            const globalScope = globalThis as typeof globalThis & {
+                window?: { FormData?: typeof FormData };
+                FormData?: typeof FormData;
+            };
+            if (!globalScope.window) {
+                globalScope.window = {};
+            }
+            if (!globalScope.window.FormData && globalScope.FormData) {
+                globalScope.window.FormData = globalScope.FormData;
+            }
+            this._httpsnippetModule = import('httpsnippet');
+        }
+
+        return this._httpsnippetModule;
+    }
+
+    private async getAvailableTargets() {
+        if (!this._availableTargets) {
+            const mod = await this.getHttpsnippetModule();
+            this._availableTargets = mod.availableTargets() as CodeSnippetTarget[];
+        }
+
+        return this._availableTargets;
     }
 
     @trace('Copy Request As cURL')
